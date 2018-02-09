@@ -1,6 +1,4 @@
 @startuml
-title 取引シーケンス
-
 TradeUsecase -> AnalyzeUsecase : 次のルートに行くのが良いか、ベース通貨に戻るのが良いか判定
 AnalyzeUsecase -> TickerRepository : 価格表を取得
 TickerRepository -> AnalyzeUsecase : 価格表

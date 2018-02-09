@@ -1,5 +1,4 @@
 @startuml
-title ベースシーケンス
 actor Exchange
 Exchange -> TickerRepository : 価格の変動を通知
 TickerRepository -> AnalyzeUsecase : 最新の価格表
