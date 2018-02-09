@@ -1,0 +1,17 @@
+@startuml
+title ベースシーケンス
+actor Exchange
+Exchange -> TickerRepository : 価格の変動を通知
+TickerRepository -> AnalyzeUsecase : 最新の価格表
+AnalyzeUsecase -> BalanceRepository : お財布状態
+AnalyzeUsecase -> AnalyzeUsecase : 取引可能ルートを探索
+alt 取引可能ルートがない
+    AnalyzeUsecase -> AnalyzeUsecase : 終了
+    destroy AnalyzeUsecase
+else 取引可能ルートがある
+    AnalyzeUsecase -> TradeUsecase : 最適ルート
+end
+loop ルート巡回完了まで
+    TradeUsecase -> TradeRepository : 取引
+end
+@enduml
