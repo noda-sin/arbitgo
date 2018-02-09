@@ -6,6 +6,7 @@
 
 ```
 $ arbitgo
+
 Usage:
   arbitgo exchange [flags]
 
