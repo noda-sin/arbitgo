@@ -2,14 +2,20 @@
 
 
 [[projects]]
-  branch = "master"
-  name = "github.com/Akagi201/cryptotrader"
+  name = "github.com/gorilla/websocket"
   packages = ["."]
-  revision = "99d3cc0fa776cafed037118afed459ab533abc06"
+  revision = "ea4d1f681babbce9545c9c5f3d5194a789c89f5b"
+  version = "v1.2.0"
+
+[[projects]]
+  branch = "dev"
+  name = "github.com/nntaoli-project/GoEx"
+  packages = ["."]
+  revision = "673e2a966c567968217ac0152fd7673488bd9341"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "662054c484407e112f161b0202c65fbefe78d55db6e4f65657681d90351606ec"
+  inputs-digest = "ad6260335318bc9a117bdf5fb3b4ea9018a78423a559d1f0e4a1c88beb6278d7"
   solver-name = "gps-cdcl"
   solver-version = 1
