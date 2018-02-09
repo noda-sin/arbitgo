@@ -12,6 +12,7 @@ Usage:
 
 Flags:
   -h, --help              help
+  -d, --dry               dry run
   -k, --key api_key       api key of exchange
   -s, --secret api_secret api secret of exchange
   -v, --version           print version
