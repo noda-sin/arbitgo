@@ -5,7 +5,15 @@
 ## 使い方
 
 ```
-あとで書く
+$ arbitgo
+Usage:
+  arbitgo exchange [flags]
+
+Flags:
+  -h, --help              help
+  -k, --key api_key       api key of exchange
+  -s, --secret api_secret api secret of exchange
+  -v, --version           print version
 ```
 
 ## 取引所
@@ -41,7 +49,7 @@ http://postd.cc/golang-clean-archithecture/
 
 ### クラス図
 
-あとで書く
+[ここに置く](uml/class.pu)
 
 ### シーケンス図
 

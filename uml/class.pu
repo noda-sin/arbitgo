@@ -1,0 +1,101 @@
+@startuml
+
+' Model
+
+class Order {
+    OrderID int64
+    Amount float64
+    Price float64
+}
+
+class Ticker {
+    Symbol string
+    Bid float64
+    BidSize float64
+    Ask float64
+    AskSize float64
+}
+
+class Balance {
+    Symbol string
+    Size float64
+}
+
+class Binance {
+}
+
+interface Exchange {
+    BaseURL
+    Key
+    Secret
+    +BuyOrder(order Order) error
+    +SellOrder(order Order) error
+    +CancelOrder(order Order) error
+    +UpdatedTikcer(cb chan Ticker) error
+    +GetBalances() Balance error
+}
+
+Exchange <|-- Binance
+Order <-- Exchange
+Ticker <-- Exchange
+Balance <-- Exchange
+
+' Repository
+
+class TickerRepository {
+    Exchange
+    +GetTicker(symbol string) Ticker, error
+    +GetTickers() []Ticker, error
+    +UpdatedTikcer(cb chan Ticker) error
+}
+
+Exchange <-- TickerRepository
+
+class BalanceRepository {
+    Exchange
+    +GetBalance(symbol string) Balance, error
+    +GetBalances() []Balance, error
+}
+
+Exchange <-- BalanceRepository
+
+class TradeRepository {
+    Exchange
+    +BuyOrder(order Order) error
+    +SellOrder(order Order) error
+    +CancelOrder(order Order) error
+    +UpdatedTikcer(cb chan Ticker) error
+}
+
+Exchange <-- TradeRepository
+
+' Usecase
+
+class TradeRoute {
+    Symbol string
+}
+
+class AnalyzeUsecase {
+    TickerRepository
+    BalanceRepository
+    TradeUsecase
+}
+
+TickerRepository <-- AnalyzeUsecase
+BalanceRepository <-- AnalyzeUsecase
+
+class TradeUsecase {
+    TradeRepository
+    +Trade(routes []TradeRoute) error
+}
+
+TradeUsecase <-- AnalyzeUsecase
+TradeRepository <-- TradeUsecase
+
+class main {
+}
+
+AnalyzeUsecase <-- main
+TradeUsecase <-- main
+
+@enduml
