@@ -51,20 +51,20 @@ http://postd.cc/golang-clean-archithecture/
 
 ### クラス図
 
-![](out/uml/class/class.png)
+![](doc/uml/class.png)
 
-[Link](uml/class.pu)
+[Link](doc/uml/class.pu)
 
 ### シーケンス図
 
 #### ベースシーケンス
 
-![](out/uml/base_seq/base_seq.png)
+![](doc/uml/base_seq.png)
 
-[Link](ml/base_seq.pu)
+[Link](doc/ml/base_seq.pu)
 
 #### 取引シーケンス
 
-![](out/uml/trade_seq/trade_seq.png)
+![](doc/uml/trade_seq.png)
 
-[Link](uml/trade_seq.pu)
+[Link](doc/uml/trade_seq.pu)

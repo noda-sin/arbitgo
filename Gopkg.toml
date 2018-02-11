@@ -25,14 +25,18 @@
 #   unused-packages = true
 
 
+[[constraint]]
+  branch = "master"
+  name = "github.com/OopsMouse/go-binance"
+
+[[constraint]]
+  name = "github.com/go-kit/kit"
+  version = "0.6.0"
+
+[[constraint]]
+  name = "go.uber.org/zap"
+  version = "1.7.1"
+
 [prune]
   go-tests = true
   unused-packages = true
-  
-[[constraint]]
-  name = "github.com/gorilla/websocket"
-  version = "1.2.0"
-
-[[constraint]]
-  branch = "dev"
-  name = "github.com/nntaoli-project/GoEx"
