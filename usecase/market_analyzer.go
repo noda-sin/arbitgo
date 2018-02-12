@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"fmt"
+	"time"
 
 	common "github.com/OopsMouse/arbitgo/common"
 	models "github.com/OopsMouse/arbitgo/models"
@@ -24,11 +25,11 @@ func (ma *MarketAnalyzer) GetBestTradeRoutes(m *models.Market) ([]*models.TradeR
 		}
 	}
 
-	if bestScore <= 0 {
+	if bestScore <= 0.01 {
 		return nil, fmt.Errorf("Best trade routes not found")
 	}
 
-	fmt.Printf("Best score: %f\n", bestScore)
+	fmt.Printf("%v Best score: %f\n", time.Now(), bestScore)
 	return bestTradeRoutes, nil
 }
 

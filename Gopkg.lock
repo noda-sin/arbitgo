@@ -5,7 +5,7 @@
   branch = "master"
   name = "github.com/OopsMouse/go-binance"
   packages = ["."]
-  revision = "c9cc98c45b6ab4ecbd913bdc2c983eff30bd6aa8"
+  revision = "a83a00fa87d30fa0c41327c9b044d32812bea55a"
 
 [[projects]]
   name = "github.com/go-kit/kit"
@@ -41,6 +41,12 @@
   revision = "b84e30acd515aadc4b783ad4ff83aff3299bdfe0"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/orcaman/concurrent-map"
+  packages = ["."]
+  revision = "d4c23bd0e01134806215ffe65ba3fd22ec6721f7"
+
+[[projects]]
   name = "github.com/pkg/errors"
   packages = ["."]
   revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
@@ -74,6 +80,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "8e187b1fe7339c4eb291a5ebf7116c4b416b7aab7e39ed055f0461713fc8f0e1"
+  inputs-digest = "3aec6166000f032d15456a4ac15b273405170545b0968f403d1e71d9086bcff2"
   solver-name = "gps-cdcl"
   solver-version = 1

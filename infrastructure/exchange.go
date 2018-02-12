@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 
@@ -9,11 +10,14 @@ import (
 	models "github.com/OopsMouse/arbitgo/models"
 	binance "github.com/OopsMouse/go-binance"
 	"github.com/go-kit/kit/log"
+	"github.com/orcaman/concurrent-map"
 )
 
 type Exchange struct {
 	Api          binance.Binance
 	QuoteSymbols []string
+	Symbols      []string
+	TickersCache cmap.ConcurrentMap
 }
 
 func NewExchange(apikey string, secret string) Exchange {
@@ -33,62 +37,92 @@ func NewExchange(apikey string, secret string) Exchange {
 		ctx,
 	)
 	b := binance.NewBinance(binanceService)
-	return Exchange{
-		Api: b,
-		QuoteSymbols: []string{
-			"BTC",
-			"BNB",
-			"ETH",
-			"USDT",
-		},
+	exInfo, err := b.ExchangeInfo()
+	if err != nil {
+		panic(err)
 	}
-}
-
-func (ex Exchange) tickers24ToTickers(ts24 []*binance.Ticker24) []*models.Ticker {
-	tickers := []*models.Ticker{}
-	for _, t24 := range ts24 {
-		symbl := t24.Symbol
-		qss := common.Filter(ex.QuoteSymbols, func(q string) bool {
-			return strings.HasSuffix(symbl, q)
-		})
-		if len(qss) == 0 {
+	quoteSymbols := common.NewSet()
+	symbols := []string{}
+	for _, s := range exInfo.Symbols {
+		if s.Symbol == "123456" { // binanceのゴミ
 			continue
 		}
-		qs := qss[0]
-		ticker := models.NewTicker(
-			strings.Replace(symbl, qs, "", 1),
-			qs,
-			t24.BidPrice,
-			t24.AskPrice,
-			t24.Volume,
-		)
-		tickers = append(tickers, ticker)
+		quoteSymbols.Append(s.QuoteAsset)
+		symbols = append(symbols, s.Symbol)
 	}
-	return tickers
+	ex := Exchange{
+		Api:          b,
+		QuoteSymbols: quoteSymbols.ToSlice(),
+		Symbols:      symbols,
+		TickersCache: cmap.New(),
+	}
+	return ex
 }
 
-func (ex Exchange) GetTickers() ([]*models.Ticker, error) {
-	ts24, err := ex.Api.Tickers24()
+func (ex Exchange) QuoteSymbol(symbol string) (*string, error) {
+	for _, s := range ex.QuoteSymbols {
+		if strings.HasSuffix(symbol, s) {
+			return &s, nil
+		}
+	}
+	return nil, fmt.Errorf("Not found quote symbol for %s", symbol)
+}
+
+func (ex Exchange) ConvertOrderBook2Ticker(symbol string, book *binance.OrderBook) (*models.Ticker, error) {
+	qs, err := ex.QuoteSymbol(symbol)
 	if err != nil {
 		return nil, err
 	}
-	return ex.tickers24ToTickers(ts24), nil
+	bidPrice := book.Bids[0].Price
+	askPrice := book.Asks[0].Price
+	return &models.Ticker{
+		BaseSymbol:  strings.Replace(symbol, *qs, "", 1),
+		QuoteSymbol: *qs,
+		BidPrice:    bidPrice,
+		AskPrice:    askPrice,
+	}, nil
+}
+
+func (ex Exchange) GetTicker(symbol string) (*models.Ticker, error) {
+	tk, _ := ex.TickersCache.Get(symbol)
+	return tk.(*models.Ticker), nil
+}
+
+func (ex Exchange) GetTickers() ([]*models.Ticker, error) {
+	tks := []*models.Ticker{}
+	for _, v := range ex.TickersCache.Items() {
+		tks = append(tks, v.(*models.Ticker))
+	}
+	return tks, nil
 }
 
 func (ex Exchange) UpdatedTickers(recv chan []*models.Ticker) error {
-	ech, done, err := ex.Api.Tickers24Websocket()
-	if err != nil {
-		return err
-	}
-	go func() {
-		for {
-			select {
-			case ts24event := <-ech:
-				recv <- ex.tickers24ToTickers(ts24event.Tickers24)
-			case <-done:
-				break
+	for _, s := range ex.Symbols {
+		go func(s string) {
+			obr := binance.OrderBookRequest{
+				Symbol: s,
 			}
-		}
-	}()
+			obch, _, err := ex.Api.OrderBookWebsocket(obr)
+			if err != nil {
+				panic(err) // 初期の接続で失敗したらpanic
+			}
+
+			for {
+				orderbook := <-obch
+				ticker, err := ex.ConvertOrderBook2Ticker(s, orderbook)
+				if err != nil {
+					fmt.Printf("Error: %#v\n", err)
+					continue
+				}
+				ex.TickersCache.Set(s, ticker)
+				tickers, err := ex.GetTickers()
+				if err != nil {
+					fmt.Printf("Error: %#v\n", err)
+					continue
+				}
+				recv <- tickers
+			}
+		}(s)
+	}
 	return nil
 }
