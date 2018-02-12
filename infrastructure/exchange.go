@@ -74,12 +74,16 @@ func (ex Exchange) ConvertOrderBook2Ticker(symbol string, book *binance.OrderBoo
 		return nil, err
 	}
 	bidPrice := book.Bids[0].Price
+	bidQty := book.Bids[0].Quantity
 	askPrice := book.Asks[0].Price
+	askQty := book.Asks[0].Quantity
 	return &models.Ticker{
 		BaseSymbol:  strings.Replace(symbol, *qs, "", 1),
 		QuoteSymbol: *qs,
 		BidPrice:    bidPrice,
 		AskPrice:    askPrice,
+		BidQty:      bidQty,
+		AskQty:      askQty,
 	}, nil
 }
 

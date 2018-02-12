@@ -5,15 +5,17 @@ type Ticker struct {
 	QuoteSymbol string
 	BidPrice    float64
 	AskPrice    float64
-	Volume      float64
+	BidQty      float64
+	AskQty      float64
 }
 
-func NewTicker(bsSymbol string, qtSymbol string, bp float64, ap float64, v float64) *Ticker {
+func NewTicker(bsSymbol string, qtSymbol string, bp float64, ap float64, bq float64, aq float64) *Ticker {
 	return &Ticker{
 		BaseSymbol:  bsSymbol,
 		QuoteSymbol: qtSymbol,
 		BidPrice:    bp,
 		AskPrice:    ap,
-		Volume:      v,
+		BidQty:      bq,
+		AskQty:      aq,
 	}
 }

@@ -19,7 +19,7 @@ func (arbit *Arbitrader) Run() {
 	}
 	for {
 		mk := <-ch
-		tr, err := arbit.MarketAnalyzer.GetBestTradeRoutes(mk)
+		tr, err := arbit.MarketAnalyzer.GetBestTrade(mk, 0.0)
 
 		if err != nil {
 			continue
@@ -28,9 +28,9 @@ func (arbit *Arbitrader) Run() {
 	}
 }
 
-func (arbit *Arbitrader) Trade(tr []*models.TradeRoute) {
-	for _, t := range tr {
-		fmt.Printf("Symbol: %s Side: %s Price %f\n", t.Symbol, t.Side, t.Price)
+func (arbit *Arbitrader) Trade(tr *models.Trade) {
+	for _, or := range tr.Orders {
+		fmt.Printf("Symbol: %s Side: %s Price %f BaseQty: %f QuoteQty %f\n", or.Symbol, or.Side, or.Price, or.BaseQty, or.QuoteQty)
 	}
 	fmt.Printf("\n")
 }
