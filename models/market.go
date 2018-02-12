@@ -69,7 +69,7 @@ func (m *Market) GetTradeTickers() [][]*Ticker {
 			tickerPairs1 = append(tickerPairs1, quoteToQuoteTicker)
 			tradeTickers = append(tradeTickers, tickerPairs1)
 
-			// // 逆方向
+			// 逆方向
 			tickerPairs2 := []*Ticker{}
 			tickerPairs2 = append(tickerPairs2, quoteToQuoteTicker)
 			tickerPairs2 = append(tickerPairs2, t)

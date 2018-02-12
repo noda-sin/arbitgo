@@ -12,10 +12,11 @@ type MarketAnalyzer struct {
 }
 
 func (ma *MarketAnalyzer) GetBestTradeRoutes(m *models.Market) ([]*models.TradeRoute, error) {
+	charge := 0.001
 	bestScore := 0.0
 	var bestTradeRoutes []*models.TradeRoute
 	for _, tks := range m.GetTradeTickers() {
-		score, tr := calcDistortion(m.StartSymbol, tks)
+		score, tr := calcDistortion(m.StartSymbol, tks, charge)
 		if tr == nil {
 			continue
 		}
@@ -25,7 +26,7 @@ func (ma *MarketAnalyzer) GetBestTradeRoutes(m *models.Market) ([]*models.TradeR
 		}
 	}
 
-	if bestScore <= 0.01 {
+	if bestScore <= 0 {
 		return nil, fmt.Errorf("Best trade routes not found")
 	}
 
@@ -33,7 +34,7 @@ func (ma *MarketAnalyzer) GetBestTradeRoutes(m *models.Market) ([]*models.TradeR
 	return bestTradeRoutes, nil
 }
 
-func calcDistortion(startSymbol string, tickers []*models.Ticker) (float64, []*models.TradeRoute) {
+func calcDistortion(startSymbol string, tickers []*models.Ticker, charge float64) (float64, []*models.TradeRoute) {
 	if len(tickers) == 0 {
 		return 0.0, nil
 	}
@@ -43,7 +44,7 @@ func calcDistortion(startSymbol string, tickers []*models.Ticker) (float64, []*m
 	nextSymbol := startSymbol
 	for _, tk := range tickers {
 		if tk.QuoteSymbol == nextSymbol {
-			curr /= tk.AskPrice
+			curr = (1 - charge) * curr / tk.AskPrice
 			nextSymbol = tk.BaseSymbol
 			tradeRoute := &models.TradeRoute{
 				Symbol: tk.BaseSymbol + tk.QuoteSymbol,
@@ -52,7 +53,7 @@ func calcDistortion(startSymbol string, tickers []*models.Ticker) (float64, []*m
 			}
 			tradeRoutes = append(tradeRoutes, tradeRoute)
 		} else {
-			curr *= tk.BidPrice
+			curr = (1 - charge) * curr * tk.BidPrice
 			nextSymbol = tk.QuoteSymbol
 			tradeRoute := &models.TradeRoute{
 				Symbol: tk.BaseSymbol + tk.QuoteSymbol,
