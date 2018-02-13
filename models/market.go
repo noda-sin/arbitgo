@@ -12,9 +12,8 @@ type Market struct {
 	QuoteToQuoteTickers map[string]*Ticker
 }
 
-func NewMarket(tickers []*Ticker) *Market {
-	startSymbol := common.BTC // MEMO: とりあえずスタートシンボルはBTCで固定
-	qs := common.NewSet()     // 基軸通貨を格納するSET
+func NewMarket(startSymbol string, tickers []*Ticker) *Market {
+	qs := common.NewSet() // 基軸通貨を格納するSET
 	startTksMap := map[string]*Ticker{}
 	otherTksMap := map[string][]*Ticker{}
 	qqTksMap := map[string]*Ticker{}

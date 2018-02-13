@@ -10,11 +10,12 @@ import (
 type MarketAnalyzer struct {
 }
 
-func (ma *MarketAnalyzer) GetBestTrade(m *models.Market, threshold float64) (*models.Trade, error) {
+func (ma *MarketAnalyzer) GetBestTrade(m *models.Market, balance float64, threshold float64) (*models.Trade, error) {
 	charge := 0.001
+
 	var bestTrade *models.Trade
 	for _, tks := range m.GetTradeTickers() {
-		or := calcTradeDistortion(m.StartSymbol, tks, charge)
+		or := calcTradeDistortion(m.StartSymbol, tks, balance, charge)
 		if or == nil {
 			continue
 		}
@@ -30,7 +31,7 @@ func (ma *MarketAnalyzer) GetBestTrade(m *models.Market, threshold float64) (*mo
 	return bestTrade, nil
 }
 
-func calcTradeDistortion(startSymbol string, tickers []*models.Ticker, charge float64) *models.Trade {
+func calcTradeDistortion(startSymbol string, tickers []*models.Ticker, balance float64, charge float64) *models.Trade {
 	if len(tickers) == 0 {
 		return nil
 	}
@@ -124,6 +125,10 @@ func calcTradeDistortion(startSymbol string, tickers []*models.Ticker, charge fl
 		minQty = qty3
 	}
 
+	if balance < minQty {
+		minQty = balance
+	}
+
 	score := (profit - 1.0)
 
 	var qqty1 float64
@@ -152,30 +157,36 @@ func calcTradeDistortion(startSymbol string, tickers []*models.Ticker, charge fl
 
 	orders := []*models.Order{}
 	orders = append(orders, &models.Order{
-		Symbol:    symbol1,
-		Price:     price1,
-		Side:      side1,
-		MarketQty: marketQty1,
-		BaseQty:   qty1,
-		QuoteQty:  qqty1,
+		Symbol:     symbol1,
+		QuoteAsset: tk1.QuoteSymbol,
+		BaseAsset:  tk1.BaseSymbol,
+		Price:      price1,
+		Side:       side1,
+		MarketQty:  marketQty1,
+		BaseQty:    qty1,
+		QuoteQty:   qqty1,
 	})
 
 	orders = append(orders, &models.Order{
-		Symbol:    symbol2,
-		Price:     price2,
-		Side:      side2,
-		MarketQty: marketQty2,
-		BaseQty:   qty2,
-		QuoteQty:  qqty2,
+		Symbol:     symbol2,
+		QuoteAsset: tk2.QuoteSymbol,
+		BaseAsset:  tk2.BaseSymbol,
+		Price:      price2,
+		Side:       side2,
+		MarketQty:  marketQty2,
+		BaseQty:    qty2,
+		QuoteQty:   qqty2,
 	})
 
 	orders = append(orders, &models.Order{
-		Symbol:    symbol3,
-		Price:     price3,
-		Side:      side3,
-		MarketQty: marketQty3,
-		BaseQty:   qty3,
-		QuoteQty:  qqty3,
+		Symbol:     symbol3,
+		QuoteAsset: tk3.QuoteSymbol,
+		BaseAsset:  tk3.BaseSymbol,
+		Price:      price3,
+		Side:       side3,
+		MarketQty:  marketQty3,
+		BaseQty:    qty3,
+		QuoteQty:   qqty3,
 	})
 
 	return &models.Trade{

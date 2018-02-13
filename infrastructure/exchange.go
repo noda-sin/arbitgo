@@ -19,7 +19,7 @@ type Exchange struct {
 	QuoteSymbols []string
 	Symbols      []string
 	TickersCache cmap.ConcurrentMap
-	RtryOrder    int
+	RetryOrder   int
 }
 
 func NewExchange(apikey string, secret string) Exchange {
@@ -57,7 +57,7 @@ func NewExchange(apikey string, secret string) Exchange {
 		QuoteSymbols: quoteSymbols.ToSlice(),
 		Symbols:      symbols,
 		TickersCache: cmap.New(),
-		RtryOrder:    10,
+		RetryOrder:   10,
 	}
 	return ex
 }
@@ -90,20 +90,53 @@ func (ex Exchange) ConvertOrderBook2Ticker(symbol string, book *binance.OrderBoo
 	}, nil
 }
 
+func (ex Exchange) GetBalance(symbol string) (*models.Balance, error) {
+	balances, err := ex.GetBalances()
+	if err != nil {
+		return nil, err
+	}
+	for _, b := range balances {
+		if b.Symbol == symbol {
+			return b, nil
+		}
+	}
+	return nil, fmt.Errorf("Not found balance for %s", symbol)
+}
+
+func (ex Exchange) GetBalances() ([]*models.Balance, error) {
+	acr := binance.AccountRequest{
+		Timestamp: time.Now(),
+	}
+	account, err := ex.Api.Account(acr)
+	if err != nil {
+		return nil, err
+	}
+	balances := []*models.Balance{}
+	for _, b := range account.Balances {
+		balance := &models.Balance{
+			Symbol: b.Asset,
+			Free:   b.Free,
+			Total:  b.Free + b.Locked,
+		}
+		balances = append(balances, balance)
+	}
+	return balances, nil
+}
+
 func (ex Exchange) GetTicker(symbol string) (*models.Ticker, error) {
 	tk, _ := ex.TickersCache.Get(symbol)
 	return tk.(*models.Ticker), nil
 }
 
-func (ex Exchange) GetMarket() (*models.Market, error) {
+func (ex Exchange) GetMarket(startSymbol string) (*models.Market, error) {
 	tks := []*models.Ticker{}
 	for _, v := range ex.TickersCache.Items() {
 		tks = append(tks, v.(*models.Ticker))
 	}
-	return models.NewMarket(tks), nil
+	return models.NewMarket(startSymbol, tks), nil
 }
 
-func (ex Exchange) OnUpdatedMarket(recv chan *models.Market) error {
+func (ex Exchange) OnUpdatedMarket(startSymbol string, recv chan *models.Market) error {
 	for _, s := range ex.Symbols {
 		go func(s string) {
 			obr := binance.OrderBookRequest{
@@ -123,7 +156,7 @@ func (ex Exchange) OnUpdatedMarket(recv chan *models.Market) error {
 					continue
 				}
 				ex.TickersCache.Set(s, ticker)
-				mkt, err := ex.GetMarket()
+				mkt, err := ex.GetMarket(startSymbol)
 				if err != nil {
 					fmt.Printf("Error: %#v\n", err)
 					continue
@@ -134,10 +167,6 @@ func (ex Exchange) OnUpdatedMarket(recv chan *models.Market) error {
 	}
 	return nil
 }
-
-// func (ex Exchange) ComfirmOrderBook(order *models.Order) bool {
-
-// }
 
 func (ex Exchange) SendOrder(order *models.Order) error {
 	side := binance.SideBuy
@@ -159,7 +188,7 @@ func (ex Exchange) SendOrder(order *models.Order) error {
 		return err
 	}
 	orderID := po.OrderID
-	for i := 0; i < ex.RtryOrder; i++ {
+	for i := 0; i < ex.RetryOrder; i++ {
 		oor := binance.OpenOrdersRequest{
 			Symbol:    order.Symbol,
 			Timestamp: time.Now(),

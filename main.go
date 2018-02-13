@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	exchange := infrastructure.NewExchange(
+	exchange := infrastructure.NewExchangeStub(
 		os.Getenv("EXCHANGE_APIKEY"),
 		os.Getenv("EXCHANGE_SECRET"),
 	)
@@ -16,7 +16,6 @@ func main() {
 	trader := usecase.Arbitrader{
 		Exchange:       exchange,
 		MarketAnalyzer: anlyzr,
-		DryRun:         true,
 	}
 	trader.Run()
 }

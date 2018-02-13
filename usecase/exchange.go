@@ -5,7 +5,9 @@ import (
 )
 
 type Exchange interface {
-	GetMarket() (*models.Market, error)
-	OnUpdatedMarket(recv chan *models.Market) error
+	GetBalance(symbol string) (*models.Balance, error)
+	GetBalances() ([]*models.Balance, error)
+	GetMarket(startSymbol string) (*models.Market, error)
+	OnUpdatedMarket(startSymbol string, recv chan *models.Market) error
 	SendOrder(order *models.Order) error
 }
