@@ -141,15 +141,27 @@ func calcTradeDistortion(startSymbol string, tickers []*models.Ticker, balance f
 
 	var qqty2 float64
 	if side2 == common.Buy {
-		qty2 = qty1 / price2
+		if side1 == common.Buy {
+			qty2 = qty1 / price2
+		} else {
+			qty2 = (qty1 * price1) / price2
+		}
 	} else {
-		qty2 = qty1
+		if side1 == common.Buy {
+			qty2 = qty1
+		} else {
+			qty2 = qty1 * price1
+		}
 	}
 	qqty2 = qqty1
 
 	var qqty3 float64
 	if side3 == common.Buy {
-		qty3 = qty2 / price3
+		if side2 == common.Buy {
+			qty3 = qty2 / price3
+		} else {
+			qty3 = (qty2 * price2) / price3
+		}
 	} else {
 		if side2 == common.Buy {
 			qty3 = qty2

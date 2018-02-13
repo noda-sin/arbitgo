@@ -54,13 +54,8 @@ func (arbit *Arbitrader) Run() {
 			}
 
 			fmt.Printf("found a route that can take profits, profit => %f\n", trade.Profit)
-			for i, o := range trade.Orders {
-				fmt.Printf("[%d] symbol => %s, side => %s, price => %f, qty => %f\n", i, o.Symbol, o.Side, o.Price, o.BaseQty)
-			}
-
 			err = arbit.Trade(trade)
 			if err != nil {
-				fmt.Printf("when trading, unknown error occur, %v\n", err)
 				fmt.Printf("please manual recovery. will be shutdown\n")
 				panic(err)
 			}
@@ -78,9 +73,12 @@ func (arbit *Arbitrader) Run() {
 }
 
 func (arbit *Arbitrader) Trade(tr *models.Trade) error {
-	for _, or := range tr.Orders {
-		err := arbit.Exchange.SendOrder(or)
+	for i, o := range tr.Orders {
+		fmt.Printf("[%d] symbol => %s, side => %s, price => %f, qty => %f\n", i, o.Symbol, o.Side, o.Price, o.BaseQty)
+
+		err := arbit.Exchange.SendOrder(o)
 		if err != nil {
+			fmt.Printf("when trading, unknown error occur, %v\n", err)
 			return err
 		}
 	}
