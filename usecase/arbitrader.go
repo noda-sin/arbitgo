@@ -30,7 +30,7 @@ func (arbit *Arbitrader) Run() {
 
 func (arbit *Arbitrader) Trade(tr *models.Trade) {
 	for _, or := range tr.Orders {
-		fmt.Printf("Symbol: %s Side: %s Price %f BaseQty: %f QuoteQty %f\n", or.Symbol, or.Side, or.Price, or.BaseQty, or.QuoteQty)
+		fmt.Printf("Symbol: %s Side: %s Price %f MarketQty: %f BaseQty: %f QuoteQty %f\n", or.Symbol, or.Side, or.Price, or.MarketQty, or.BaseQty, or.QuoteQty)
 	}
 	fmt.Printf("\n")
 }
