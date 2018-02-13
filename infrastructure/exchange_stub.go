@@ -12,13 +12,13 @@ type ExchangeStub struct {
 	Balances map[string]*models.Balance
 }
 
-func NewExchangeStub(apikey string, secret string) ExchangeStub {
+func NewExchangeStub(apikey string, secret string, startSymbol string) ExchangeStub {
 	ex := NewExchange(apikey, secret)
 	balances := map[string]*models.Balance{}
-	balances[common.BTC] = &models.Balance{
-		Symbol: common.BTC,
-		Free:   1.0,
-		Total:  1.0,
+	balances[startSymbol] = &models.Balance{
+		Symbol: startSymbol,
+		Free:   100.0,
+		Total:  100.0,
 	}
 	return ExchangeStub{
 		Exchange: ex,

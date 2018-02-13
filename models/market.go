@@ -45,7 +45,7 @@ func NewMarket(startSymbol string, tickers []*Ticker) *Market {
 		}
 	}
 	return &Market{
-		StartSymbol:         common.BTC,
+		StartSymbol:         startSymbol,
 		QuoteSymbols:        qs.ToSlice(),
 		StartSymbolTickers:  startTksMap,
 		OtherTickers:        otherTksMap,

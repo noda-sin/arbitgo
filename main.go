@@ -18,6 +18,7 @@ func main() {
 	var dryrun bool
 	var apiKey string
 	var secret string
+	var asset string
 
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
@@ -37,17 +38,26 @@ func main() {
 			Destination: &secret,
 			EnvVar:      "EXCAHNGE_SECRET",
 		},
+		cli.StringFlag{
+			Name:        "asset, as",
+			Usage:       "start asset",
+			Destination: &asset,
+		},
 	}
 
 	app.Action = func(c *cli.Context) error {
 		if apiKey == "" || secret == "" {
 			return cli.NewExitError("api key and secret is required", 0)
 		}
+		if asset == "" {
+			asset = common.BTC
+		}
 		var exchange usecase.Exchange
 		if dryrun {
 			exchange = infrastructure.NewExchangeStub(
 				apiKey,
 				secret,
+				asset,
 			)
 		} else {
 			exchange = infrastructure.NewExchange(
@@ -59,7 +69,7 @@ func main() {
 		trader := usecase.NewArbitrader(
 			exchange,
 			anlyzr,
-			common.BTC,
+			asset,
 		)
 		trader.Run()
 		return nil

@@ -1,7 +1,10 @@
 package common
 
 const (
-	BTC = "BTC"
+	BTC  = "BTC"
+	USDT = "USDT"
+	ETH  = "ETH"
+	BNB  = "BNB"
 )
 
 const (
