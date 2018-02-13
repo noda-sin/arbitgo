@@ -6,16 +6,24 @@
 
 ```
 $ arbitgo
+NAME:
+   arbitgo - A Bot for arbit rage with one exchange, multi currency
 
-Usage:
-  arbitgo exchange [flags]
+USAGE:
+   main [global options] command [command options] [arguments...]
 
-Flags:
-  -h, --help              help
-  -d, --dry               dry run
-  -k, --key api_key       api key of exchange
-  -s, --secret api_secret api secret of exchange
-  -v, --version           print version
+VERSION:
+   0.0.1
+
+COMMANDS:
+     help, h  Shows a list of commands or help for one command
+
+GLOBAL OPTIONS:
+   --dryrun, -d              dry run mode
+   --apikey value, -a value  api key of exchange [$EXCHANGE_APIKEY]
+   --secret value, -s value  secret of exchange [$EXCAHNGE_SECRET]
+   --help, -h                show help
+   --version, -v             print the version
 ```
 
 ## 取引所
