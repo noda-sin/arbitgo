@@ -151,7 +151,7 @@ func calcTradeDistortion(startSymbol string, tickers []*models.Ticker, balance f
 	if side3 == common.Buy {
 		qty3 = qty2 / price3
 	} else {
-		qty3 = qty2
+		qty3 = qty2 * price2
 	}
 	qqty3 = qqty2
 

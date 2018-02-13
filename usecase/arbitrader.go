@@ -40,33 +40,36 @@ func (arbit *Arbitrader) Run() {
 			continue
 		}
 
-		market := <-ch
-		trade := arbit.MarketAnalyzer.GetBestTrade(
-			market,
-			arbit.Exchange.GetCharge(),
-			balance.Free,
-			0.0,
-		)
+		for {
+			market := <-ch
+			trade := arbit.MarketAnalyzer.GetBestTrade(
+				market,
+				arbit.Exchange.GetCharge(),
+				balance.Free,
+				0.001,
+			)
 
-		if trade == nil {
-			continue
+			if trade == nil {
+				continue
+			}
+
+			fmt.Printf("found a route that can take profits, profit => %f\n", trade.Profit)
+			for i, o := range trade.Orders {
+				fmt.Printf("[%d] symbol => %s, side => %s, price => %f, qty => %f\n", i, o.Symbol, o.Side, o.Price, o.BaseQty)
+			}
+
+			err = arbit.Trade(trade)
+			if err != nil {
+				fmt.Printf("when trading, unknown error occur, %v\n", err)
+				fmt.Printf("please manual recovery. will be shutdown\n")
+				panic(err)
+			}
+
+			fmt.Printf("success to arbitrage\n")
+			arbit.PrintBalances()
+			time.Sleep(10 * time.Second)
+			break
 		}
-
-		fmt.Printf("found a route that can take profits, profit => %f\n", trade.Profit)
-		for i, o := range trade.Orders {
-			fmt.Printf("[%d] symbol => %s, side => %s, price => %f, qty => %f\n", i, o.Symbol, o.Side, o.Price, o.BaseQty)
-		}
-
-		err = arbit.Trade(trade)
-		if err != nil {
-			fmt.Printf("when trading, unknown error occur, %v\n", err)
-			fmt.Printf("please manual recovery. will be shutdown\n")
-			panic(err)
-		}
-
-		fmt.Printf("success to arbitrage\n")
-		arbit.PrintBalances()
-		time.Sleep(10 * time.Second)
 	}
 }
 
