@@ -70,6 +70,10 @@ func (arbit *Arbitrader) Run() {
 			time.Sleep(10 * time.Second)
 			break
 		}
+
+		fmt.Printf("success to arbitrage\n")
+		arbit.PrintBalances()
+		time.Sleep(10 * time.Second)
 	}
 }
 
