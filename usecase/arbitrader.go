@@ -1,19 +1,18 @@
 package usecase
 
 import (
-	"fmt"
-
 	models "github.com/OopsMouse/arbitgo/models"
 )
 
 type Arbitrader struct {
-	MarketRepository MarketRepository
-	MarketAnalyzer   MarketAnalyzer
+	Exchange
+	MarketAnalyzer
+	DryRun bool
 }
 
 func (arbit *Arbitrader) Run() {
 	ch := make(chan *models.Market)
-	err := arbit.MarketRepository.UpdatedMarket(ch)
+	err := arbit.Exchange.OnUpdatedMarket(ch)
 	if err != nil {
 		panic(err)
 	}
@@ -22,15 +21,30 @@ func (arbit *Arbitrader) Run() {
 		tr, err := arbit.MarketAnalyzer.GetBestTrade(mk, 0.0)
 
 		if err != nil {
+			// TODO: エラー処理
 			continue
 		}
-		arbit.Trade(tr)
+
+		err = arbit.Trade(tr)
+		if err != nil {
+			// TODO: エラー処理
+			continue
+		}
+
+		// success!!
 	}
 }
 
-func (arbit *Arbitrader) Trade(tr *models.Trade) {
+func (arbit *Arbitrader) Trade(tr *models.Trade) error {
 	for _, or := range tr.Orders {
-		fmt.Printf("Symbol: %s Side: %s Price %f MarketQty: %f BaseQty: %f QuoteQty %f\n", or.Symbol, or.Side, or.Price, or.MarketQty, or.BaseQty, or.QuoteQty)
+		if arbit.DryRun {
+			continue
+		}
+
+		err := arbit.Exchange.SendOrder(or)
+		if err != nil {
+			return err
+		}
 	}
-	fmt.Printf("\n")
+	return nil
 }

@@ -4,7 +4,8 @@ import (
 	models "github.com/OopsMouse/arbitgo/models"
 )
 
-type MarketRepository interface {
+type Exchange interface {
 	GetMarket() (*models.Market, error)
-	UpdatedMarket(recv chan *models.Market) error
+	OnUpdatedMarket(recv chan *models.Market) error
+	SendOrder(order *models.Order) error
 }
