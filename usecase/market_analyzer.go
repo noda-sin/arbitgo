@@ -8,9 +8,7 @@ import (
 type MarketAnalyzer struct {
 }
 
-func (ma *MarketAnalyzer) GetBestTrade(m *models.Market, balance float64, threshold float64) *models.Trade {
-	charge := 0.001
-
+func (ma *MarketAnalyzer) GetBestTrade(m *models.Market, charge float64, balance float64, threshold float64) *models.Trade {
 	var bestTrade *models.Trade
 	for _, tks := range m.GetTradeTickers() {
 		or := calcTradeDistortion(m.StartSymbol, tks, balance, charge)

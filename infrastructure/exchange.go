@@ -64,6 +64,10 @@ func NewExchange(apikey string, secret string) Exchange {
 	return ex
 }
 
+func (ex Exchange) GetCharge() float64 {
+	return 0.001
+}
+
 func (ex Exchange) QuoteSymbol(symbol string) (*string, error) {
 	for _, s := range ex.QuoteSymbols {
 		if strings.HasSuffix(symbol, s) {

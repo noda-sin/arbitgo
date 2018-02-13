@@ -28,7 +28,7 @@ func (arbit *Arbitrader) Run() {
 		}
 
 		mk := <-ch
-		tr := arbit.MarketAnalyzer.GetBestTrade(mk, begin.Free, 0.0)
+		tr := arbit.MarketAnalyzer.GetBestTrade(mk, arbit.Exchange.GetCharge(), begin.Free, 0.0)
 
 		if tr == nil {
 			continue
