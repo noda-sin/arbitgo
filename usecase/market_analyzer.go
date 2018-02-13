@@ -1,8 +1,6 @@
 package usecase
 
 import (
-	"fmt"
-
 	common "github.com/OopsMouse/arbitgo/common"
 	models "github.com/OopsMouse/arbitgo/models"
 )
@@ -10,7 +8,7 @@ import (
 type MarketAnalyzer struct {
 }
 
-func (ma *MarketAnalyzer) GetBestTrade(m *models.Market, balance float64, threshold float64) (*models.Trade, error) {
+func (ma *MarketAnalyzer) GetBestTrade(m *models.Market, balance float64, threshold float64) *models.Trade {
 	charge := 0.001
 
 	var bestTrade *models.Trade
@@ -25,10 +23,10 @@ func (ma *MarketAnalyzer) GetBestTrade(m *models.Market, balance float64, thresh
 	}
 
 	if bestTrade == nil || bestTrade.Score <= threshold {
-		return nil, fmt.Errorf("Best trade routes not found")
+		return nil
 	}
 
-	return bestTrade, nil
+	return bestTrade
 }
 
 func calcTradeDistortion(startSymbol string, tickers []*models.Ticker, balance float64, charge float64) *models.Trade {

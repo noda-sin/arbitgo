@@ -28,11 +28,9 @@ func (arbit *Arbitrader) Run() {
 		}
 
 		mk := <-ch
-		tr, err := arbit.MarketAnalyzer.GetBestTrade(mk, begin.Free, 0.0)
+		tr := arbit.MarketAnalyzer.GetBestTrade(mk, begin.Free, 0.0)
 
-		if err != nil {
-			fmt.Printf("Error: %v", err)
-			// TODO: エラー処理
+		if tr == nil {
 			continue
 		}
 

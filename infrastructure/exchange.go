@@ -11,6 +11,7 @@ import (
 	models "github.com/OopsMouse/arbitgo/models"
 	binance "github.com/OopsMouse/go-binance"
 	"github.com/go-kit/kit/log"
+	"github.com/jpillora/backoff"
 	"github.com/orcaman/concurrent-map"
 )
 
@@ -38,6 +39,7 @@ func NewExchange(apikey string, secret string) Exchange {
 		logger,
 		ctx,
 	)
+
 	b := binance.NewBinance(binanceService)
 	exInfo, err := b.ExchangeInfo()
 	if err != nil {
@@ -142,23 +144,36 @@ func (ex Exchange) OnUpdatedMarket(startSymbol string, recv chan *models.Market)
 			obr := binance.OrderBookRequest{
 				Symbol: s,
 			}
-			obch, _, err := ex.Api.OrderBookWebsocket(obr)
-			if err != nil {
-				// TODO: 再接続処理
-				panic(err) // 初期の接続で失敗したらpanic
+
+			b := &backoff.Backoff{
+				Max: 5 * time.Minute,
+			}
+
+			var obch chan *binance.OrderBook
+			for {
+				ret, _, err := ex.Api.OrderBookWebsocket(obr)
+				obch = ret
+				if err != nil {
+					d := b.Duration()
+					fmt.Printf("%s, reconnecting in %s", err, d)
+					time.Sleep(d)
+					continue
+				}
+				b.Reset()
+				break
 			}
 
 			for {
 				orderbook := <-obch
 				ticker, err := ex.ConvertOrderBook2Ticker(s, orderbook)
 				if err != nil {
-					fmt.Printf("Error: %#v\n", err)
+					fmt.Printf("%s, convert error, order book to ticker, last update id is %#v\n", err, orderbook.LastUpdateID)
 					continue
 				}
 				ex.TickersCache.Set(s, ticker)
 				mkt, err := ex.GetMarket(startSymbol)
 				if err != nil {
-					fmt.Printf("Error: %#v\n", err)
+					fmt.Printf("error get market error, %s\n", startSymbol)
 					continue
 				}
 				recv <- mkt
@@ -188,6 +203,9 @@ func (ex Exchange) SendOrder(order *models.Order) error {
 		return err
 	}
 	orderID := po.OrderID
+	b := &backoff.Backoff{
+		Max: 5 * time.Minute,
+	}
 	for i := 0; i < ex.RetryOrder; i++ {
 		oor := binance.OpenOrdersRequest{
 			Symbol:    order.Symbol,
@@ -200,7 +218,7 @@ func (ex Exchange) SendOrder(order *models.Order) error {
 		if len(oo) == 0 {
 			return nil
 		}
-		time.Sleep(10 * time.Second)
+		time.Sleep(b.Duration())
 	}
 	cor := binance.CancelOrderRequest{
 		Symbol:    order.Symbol,
