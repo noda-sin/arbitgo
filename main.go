@@ -13,11 +13,11 @@ func main() {
 		os.Getenv("EXCHANGE_APIKEY"),
 		os.Getenv("EXCHANGE_SECRET"),
 	)
-	anlyzr := usecase.MarketAnalyzer{}
-	trader := usecase.Arbitrader{
-		Exchange:       exchange,
-		MarketAnalyzer: anlyzr,
-		StartSymbol:    common.BTC,
-	}
+	anlyzr := usecase.NewMarketAnalyzer()
+	trader := usecase.NewArbitrader(
+		exchange,
+		anlyzr,
+		common.BTC,
+	)
 	trader.Run()
 }

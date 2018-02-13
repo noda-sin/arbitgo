@@ -36,6 +36,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/jpillora/backoff"
+  packages = ["."]
+  revision = "8eab2debe79d12b7bd3d10653910df25fa9552ba"
+
+[[projects]]
+  branch = "master"
   name = "github.com/kr/logfmt"
   packages = ["."]
   revision = "b84e30acd515aadc4b783ad4ff83aff3299bdfe0"
@@ -55,6 +61,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "16d9201b6227b9e076e34fa473ef3d824836e6e8ab89728c0bbe363d47b0dc33"
+  inputs-digest = "092217db9c45f398ae1ea9bba60d0bb22e699e1415e3f5f19d2edbb7c730d60b"
   solver-name = "gps-cdcl"
   solver-version = 1
