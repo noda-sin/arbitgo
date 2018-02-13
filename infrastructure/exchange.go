@@ -155,7 +155,7 @@ func (ex Exchange) OnUpdatedMarket(startSymbol string, recv chan *models.Market)
 
 			var obch chan *binance.OrderBook
 			for {
-				ret, _, err := ex.Api.OrderBookWebsocket(obr)
+				ret, done, err := ex.Api.OrderBookWebsocket(obr)
 				obch = ret
 				if err != nil {
 					d := b.Duration()
@@ -164,23 +164,26 @@ func (ex Exchange) OnUpdatedMarket(startSymbol string, recv chan *models.Market)
 					continue
 				}
 				b.Reset()
-				break
-			}
 
-			for {
-				orderbook := <-obch
-				ticker, err := ex.ConvertOrderBook2Ticker(s, orderbook)
-				if err != nil {
-					fmt.Printf("%s, convert error, order book to ticker, last update id is %#v\n", err, orderbook.LastUpdateID)
-					continue
+				for {
+					select {
+					case orderbook := <-obch:
+						ticker, err := ex.ConvertOrderBook2Ticker(s, orderbook)
+						if err != nil {
+							fmt.Printf("%s, convert error, order book to ticker, last update id is %#v\n", err, orderbook.LastUpdateID)
+							continue
+						}
+						ex.TickersCache.Set(s, ticker)
+						mkt, err := ex.GetMarket(startSymbol)
+						if err != nil {
+							fmt.Printf("error get market error, %s\n", startSymbol)
+							continue
+						}
+						recv <- mkt
+					case <-done:
+						break
+					}
 				}
-				ex.TickersCache.Set(s, ticker)
-				mkt, err := ex.GetMarket(startSymbol)
-				if err != nil {
-					fmt.Printf("error get market error, %s\n", startSymbol)
-					continue
-				}
-				recv <- mkt
 			}
 		}(s)
 	}
