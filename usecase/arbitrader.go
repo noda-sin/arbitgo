@@ -2,56 +2,50 @@ package usecase
 
 import (
 	"fmt"
+	"time"
 
-	"github.com/OopsMouse/arbitgo/common"
 	models "github.com/OopsMouse/arbitgo/models"
 )
 
 type Arbitrader struct {
 	Exchange
 	MarketAnalyzer
+	StartSymbol string
 }
 
 func (arbit *Arbitrader) Run() {
 	ch := make(chan *models.Market)
-	err := arbit.Exchange.OnUpdatedMarket(common.BTC, ch)
+	err := arbit.Exchange.OnUpdatedMarket(arbit.StartSymbol, ch)
 	if err != nil {
 		panic(err)
 	}
 	for {
-		begin, err := arbit.Exchange.GetBalance(common.BTC)
+		begin, err := arbit.Exchange.GetBalance(arbit.StartSymbol)
 
 		if err != nil {
-			fmt.Printf("Error: %v", err)
-			// TODO: エラー処理
+			fmt.Printf("%v, get balance error. wait 5 minute.\n", err)
+			time.Sleep(5 * time.Minute)
 			continue
 		}
 
-		mk := <-ch
-		tr := arbit.MarketAnalyzer.GetBestTrade(mk, arbit.Exchange.GetCharge(), begin.Free, 0.0)
+		market := <-ch
+		trade := arbit.MarketAnalyzer.GetBestTrade(
+			market,
+			arbit.Exchange.GetCharge(),
+			begin.Free,
+			0.0,
+		)
 
-		if tr == nil {
+		if trade == nil {
 			continue
 		}
 
-		err = arbit.Trade(tr)
+		err = arbit.Trade(trade)
 		if err != nil {
-			fmt.Printf("Error: %v", err)
-			// TODO: エラー処理
-			continue
+			fmt.Printf("when trading, unknown error occure %v.\n", err)
+			fmt.Printf("please manual recovery. will be shutdown... \n")
+			panic(err)
 		}
-
-		end, err := arbit.Exchange.GetBalance(common.BTC)
-
-		if err != nil {
-			fmt.Printf("Error: %v", err)
-			// TODO: エラー処理
-			continue
-		}
-
-		// success!!
-		fmt.Printf("Arbit rage success.\n")
-		fmt.Printf("Balance updated %f => %f.\n", begin.Total, end.Total)
 	}
 }
 

@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 
+	"github.com/OopsMouse/arbitgo/common"
 	"github.com/OopsMouse/arbitgo/infrastructure"
 	"github.com/OopsMouse/arbitgo/usecase"
 )
@@ -16,6 +17,7 @@ func main() {
 	trader := usecase.Arbitrader{
 		Exchange:       exchange,
 		MarketAnalyzer: anlyzr,
+		StartSymbol:    common.BTC,
 	}
 	trader.Run()
 }
