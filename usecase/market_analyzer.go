@@ -8,6 +8,10 @@ import (
 type MarketAnalyzer struct {
 }
 
+func NewMarketAnalyzer() MarketAnalyzer {
+	return MarketAnalyzer{}
+}
+
 func (ma *MarketAnalyzer) GetBestTrade(m *models.Market, charge float64, balance float64, threshold float64) *models.Trade {
 	var bestTrade *models.Trade
 	for _, tks := range m.GetTradeTickers() {
