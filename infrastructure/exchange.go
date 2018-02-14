@@ -110,6 +110,10 @@ func (ex Exchange) GetBalances() ([]*models.Balance, error) {
 	return balances, nil
 }
 
+func (ex Exchange) GetSymbols() []models.Symbol {
+	return ex.Symbols
+}
+
 func (ex Exchange) SetDepth(symbol models.Symbol, depth *models.Depth) {
 	ex.DepthCache.Set(string(symbol), depth)
 }
@@ -205,19 +209,30 @@ func (ex Exchange) OnUpdateDepthList(recv chan []*models.Depth) error {
 }
 
 func (ex Exchange) SendOrder(order *models.Order) error {
-	side := binance.SideBuy
+	var side binance.OrderSide
 	if order.Side == models.SideBuy {
 		side = binance.SideBuy
 	} else {
 		side = binance.SideSell
 	}
-	nor := binance.NewOrderRequest{
-		Symbol:    string(order.Symbol),
-		Type:      binance.TypeLimit,
-		Side:      side,
-		Quantity:  order.Qty,
-		Price:     order.Price,
-		Timestamp: time.Now(),
+	var nor binance.NewOrderRequest
+	if order.OrderType == models.TypeLimit {
+		nor = binance.NewOrderRequest{
+			Symbol:    string(order.Symbol),
+			Type:      binance.TypeLimit,
+			Side:      side,
+			Quantity:  order.Qty,
+			Price:     order.Price,
+			Timestamp: time.Now(),
+		}
+	} else {
+		nor = binance.NewOrderRequest{
+			Symbol:    string(order.Symbol),
+			Type:      binance.TypeMarket,
+			Side:      side,
+			Quantity:  order.Qty,
+			Timestamp: time.Now(),
+		}
 	}
 	po, err := ex.Api.NewOrder(nor)
 	if err != nil {

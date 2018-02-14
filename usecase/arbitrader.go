@@ -50,27 +50,41 @@ func (arbit *Arbitrader) Run() {
 				continue
 			}
 
-			err = arbit.TryTrade(bestOrderBook)
+			err = arbit.Trade(bestOrderBook)
 			if err != nil {
-				// TODO: Recovery
+				arbit.Recovery()
 			}
 			break
 		}
 	}
 }
 
-func (arbit *Arbitrader) TryTrade(orderBook *models.OrderBook) error {
+func (arbit *Arbitrader) Trade(orderBook *models.OrderBook) error {
 	for i, o := range orderBook.Orders {
 		fmt.Printf("[%d] symbol => %s, side => %s, price => %f, qty => %f\n", i, o.Symbol, o.Side, o.Price, o.Qty)
-
 		err := arbit.Exchange.SendOrder(o)
 		if err != nil {
 			fmt.Printf("when trading, unknown error occur, %v\n", err)
 			return err
 		}
 	}
-
 	return nil
+}
+
+func (arbit *Arbitrader) Recovery() {
+	balances, err := arbit.Exchange.GetBalances()
+	if err != nil {
+		panic(err)
+	}
+	orderBook := arbit.MarketAnalyzer.GenerateRecoveryOrderBook(
+		arbit.MainAsset,
+		arbit.Exchange.GetSymbols(),
+		balances,
+	)
+	err = arbit.Trade(orderBook)
+	if err != nil {
+		panic(err)
+	}
 }
 
 // func (arbit *Arbitrader) PrintBalances() {

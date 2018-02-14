@@ -6,6 +6,8 @@ type Symbol string
 
 type OrderSide string
 
+type OrderType string
+
 const (
 	AssetBTC  = Asset("BTC")
 	AssetUSDT = Asset("USDT")
@@ -14,12 +16,16 @@ const (
 
 	SideBuy  = OrderSide("BUY")
 	SideSell = OrderSide("Sell")
+
+	TypeLimit  = OrderType("LIMIT")
+	TypeMarket = OrderType("MARKET")
 )
 
 type Order struct {
 	Symbol     Symbol
 	BaseAsset  Asset
 	QuoteAsset Asset
+	OrderType  OrderType
 	Price      float64
 	Side       OrderSide
 	Qty        float64

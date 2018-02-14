@@ -252,6 +252,7 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 		Symbol:     symbol1,
 		QuoteAsset: depth1.QuoteAsset,
 		BaseAsset:  depth1.BaseAsset,
+		OrderType:  models.TypeLimit,
 		Price:      price1,
 		Side:       side1,
 		Qty:        qty1,
@@ -261,6 +262,7 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 		Symbol:     symbol2,
 		QuoteAsset: depth2.QuoteAsset,
 		BaseAsset:  depth2.BaseAsset,
+		OrderType:  models.TypeLimit,
 		Price:      price2,
 		Side:       side2,
 		Qty:        qty2,
@@ -270,6 +272,7 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 		Symbol:     symbol3,
 		QuoteAsset: depth3.QuoteAsset,
 		BaseAsset:  depth3.BaseAsset,
+		OrderType:  models.TypeLimit,
 		Price:      price3,
 		Side:       side3,
 		Qty:        qty3,
@@ -279,4 +282,37 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 		Score:  score,
 		Orders: orders,
 	}
+}
+
+func (ma *MarketAnalyzer) GenerateRecoveryOrderBook(mainAsset models.Asset, symbols []models.Symbol, balances []*models.Balance) *models.OrderBook {
+	orders := []*models.Order{}
+	for _, balance := range balances {
+		if balance.Asset == mainAsset {
+			continue
+		}
+		order := GenerateRecoveryOrder(mainAsset, symbols, balance)
+		if order != nil {
+			orders = append(orders, order)
+		}
+	}
+	return &models.OrderBook{
+		Orders: orders,
+	}
+}
+
+func GenerateRecoveryOrder(mainAsset models.Asset, symbols []models.Symbol, balance *models.Balance) *models.Order {
+	targetAsset := balance.Asset
+	for _, symbol := range symbols {
+		if string(symbol) == string(targetAsset)+string(mainAsset) {
+			return &models.Order{
+				Symbol:     symbol,
+				BaseAsset:  targetAsset,
+				QuoteAsset: mainAsset,
+				OrderType:  models.TypeMarket,
+				Side:       models.SideSell,
+				Qty:        balance.Free,
+			}
+		}
+	}
+	return nil
 }
