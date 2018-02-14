@@ -6,9 +6,9 @@ import (
 
 type Exchange interface {
 	GetCharge() float64
-	GetBalance(symbol string) (*models.Balance, error)
+	GetBalance(asset models.Asset) (*models.Balance, error)
 	GetBalances() ([]*models.Balance, error)
-	GetMarket(startSymbol string) (*models.Market, error)
-	OnUpdatedMarket(startSymbol string, recv chan *models.Market) error
+	GetDepthList() ([]*models.Depth, error)
+	OnUpdateDepthList(recv chan []*models.Depth) error
 	SendOrder(order *models.Order) error
 }

@@ -1,99 +1,175 @@
 package usecase
 
 import (
-	common "github.com/OopsMouse/arbitgo/common"
 	models "github.com/OopsMouse/arbitgo/models"
+	"github.com/OopsMouse/arbitgo/util"
 )
 
 type MarketAnalyzer struct {
+	MainAsset  models.Asset
+	Charge     float64
+	Threashold float64
 }
 
-func NewMarketAnalyzer() MarketAnalyzer {
-	return MarketAnalyzer{}
+func NewMarketAnalyzer(mainAsset models.Asset, charge float64, threashold float64) MarketAnalyzer {
+	return MarketAnalyzer{
+		MainAsset:  mainAsset,
+		Charge:     charge,
+		Threashold: threashold,
+	}
 }
 
-func (ma *MarketAnalyzer) GetBestTrade(m *models.Market, charge float64, balance float64, threshold float64) *models.Trade {
-	var bestTrade *models.Trade
-	for _, tks := range m.GetTradeTickers() {
-		or := calcTradeDistortion(m.StartSymbol, tks, balance, charge)
-		if or == nil {
+func (ma *MarketAnalyzer) GenerateBestOrderBook(depthList []*models.Depth, currBalance float64) *models.OrderBook {
+	var best *models.OrderBook
+	for _, d := range GenerateRotationDepthList(ma.MainAsset, depthList) {
+		orderBook := GenerateOrderBook(ma.MainAsset, d, currBalance, ma.Charge)
+		if orderBook == nil {
 			continue
 		}
-		if bestTrade == nil || or.Score > bestTrade.Score {
-			bestTrade = or
+		if best == nil || orderBook.Score > best.Score {
+			best = orderBook
 		}
 	}
 
-	if bestTrade == nil || bestTrade.Score <= threshold {
+	if best == nil || best.Score <= ma.Threashold {
 		return nil
 	}
 
-	return bestTrade
+	return best
 }
 
-func calcTradeDistortion(startSymbol string, tickers []*models.Ticker, balance float64, charge float64) *models.Trade {
-	if len(tickers) == 0 {
+func GenerateRotationDepthList(mainAsset models.Asset, depthList []*models.Depth) []*models.RotationDepth {
+	quoteAssetSet := util.NewSet()
+	for _, depth := range depthList {
+		quoteAssetSet.Append(string(depth.QuoteAsset))
+	}
+
+	mainAssetDepth := map[string]*models.Depth{}
+	otherAssetDepth := map[string][]*models.Depth{}
+	for _, depth := range depthList {
+		if depth.QuoteAsset == mainAsset {
+			mainAssetDepth[string(depth.BaseAsset)] = depth
+		} else {
+			otherAssetDepth[string(depth.BaseAsset)] = append(otherAssetDepth[string(depth.BaseAsset)], depth)
+		}
+	}
+
+	for k, _ := range mainAssetDepth {
+		if quoteAssetSet.Include(k) {
+			delete(mainAssetDepth, k)
+		}
+	}
+
+	for k, _ := range otherAssetDepth {
+		if mainAssetDepth[k] == nil {
+			delete(otherAssetDepth, k)
+		} else if quoteAssetSet.Include(k) {
+			delete(otherAssetDepth, k)
+		}
+	}
+
+	quoteAssetToQuoteAssetDepth := map[string]*models.Depth{}
+	for _, depth := range depthList {
+		if quoteAssetSet.Include(string(depth.QuoteAsset)) && quoteAssetSet.Include(string(depth.BaseAsset)) {
+			quoteAssetToQuoteAssetDepth[string(depth.QuoteAsset)+string(depth.BaseAsset)] = depth
+			quoteAssetToQuoteAssetDepth[string(depth.BaseAsset)+string(depth.QuoteAsset)] = depth
+		}
+	}
+
+	rotateDepthList := []*models.RotationDepth{}
+	for k, v := range mainAssetDepth {
+		for _, t := range otherAssetDepth[k] {
+			depth1 := v
+			depth2 := t
+			depth3 := quoteAssetToQuoteAssetDepth[string(mainAsset)+string(t.QuoteAsset)]
+			if depth3 == nil {
+				continue
+			}
+
+			depthList1 := []*models.Depth{}
+			depthList1 = append(depthList1, depth1)
+			depthList1 = append(depthList1, depth2)
+			depthList1 = append(depthList1, depth3)
+
+			depthList2 := []*models.Depth{}
+			depthList2 = append(depthList2, depth3)
+			depthList2 = append(depthList2, depth2)
+			depthList2 = append(depthList2, depth1)
+
+			rotateDepthList = append(rotateDepthList, &models.RotationDepth{
+				DepthList: depthList1,
+			})
+			rotateDepthList = append(rotateDepthList, &models.RotationDepth{
+				DepthList: depthList2,
+			})
+		}
+	}
+	return rotateDepthList
+}
+
+func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth, currentBalance float64, charge float64) *models.OrderBook {
+	if rotateDepth == nil || len(rotateDepth.DepthList) == 0 {
 		return nil
 	}
 
-	currentSymbol := startSymbol
+	currentAsset := mainAsset
 	minQty := 0.0
 	profit := 1.0
 
 	// 1回目の取引
-	tk1 := tickers[0]
-	symbol1 := tk1.BaseSymbol + tk1.QuoteSymbol
-	var side1 string
+	depth1 := rotateDepth.DepthList[0]
+	symbol1 := depth1.Symbol
+	var side1 models.OrderSide
 	var price1 float64
-	var marketQty1 float64
+	// var marketQty1 float64
 	var qty1 float64
-	if tk1.QuoteSymbol == currentSymbol {
-		side1 = common.Buy
-		price1 = tk1.AskPrice
-		marketQty1 = tk1.AskQty
-		qty1 = tk1.AskPrice * tk1.AskQty
-		currentSymbol = tk1.BaseSymbol
-		profit = (1 - charge) * profit / tk1.AskPrice
+	if depth1.QuoteAsset == currentAsset {
+		side1 = models.SideBuy
+		price1 = depth1.AskPrice
+		// marketQty1 = depth1.AskQty
+		qty1 = depth1.AskPrice * depth1.AskQty
+		currentAsset = depth1.BaseAsset
+		profit = (1 - charge) * profit / depth1.AskPrice
 	} else {
-		side1 = common.Sell
-		price1 = tk1.BidPrice
-		marketQty1 = tk1.BidQty
-		qty1 = tk1.BidQty
-		currentSymbol = tk1.QuoteSymbol
-		profit = (1 - charge) * profit * tk1.BidPrice
+		side1 = models.SideSell
+		price1 = depth1.BidPrice
+		// marketQty1 = depth1.BidQty
+		qty1 = depth1.BidQty
+		currentAsset = depth1.QuoteAsset
+		profit = (1 - charge) * profit * depth1.BidPrice
 	}
 	minQty = qty1
 
 	// 2回目の取引
-	tk2 := tickers[1]
-	symbol2 := tk2.BaseSymbol + tk2.QuoteSymbol
-	var side2 string
+	depth2 := rotateDepth.DepthList[1]
+	symbol2 := depth2.Symbol
+	var side2 models.OrderSide
 	var price2 float64
-	var marketQty2 float64
+	// var marketQty2 float64
 	var qty2 float64
-	if tk2.QuoteSymbol == currentSymbol {
-		side2 = common.Buy
-		price2 = tk2.AskPrice
-		marketQty2 = tk2.AskQty
-		if side1 == common.Buy {
-			qty2 = tk2.AskPrice * tk2.AskQty * price1
+	if depth2.QuoteAsset == currentAsset {
+		side2 = models.SideBuy
+		price2 = depth2.AskPrice
+		// marketQty2 = depth2.AskQty
+		if side1 == models.SideBuy {
+			qty2 = depth2.AskPrice * depth2.AskQty * price1
 		} else {
-			qty2 = tk2.AskPrice * tk2.AskQty * (1.0 / price1)
+			qty2 = depth2.AskPrice * depth2.AskQty * (1.0 / price1)
 		}
-		currentSymbol = tk2.BaseSymbol
-		profit = (1 - charge) * profit / tk2.AskPrice
+		currentAsset = depth2.BaseAsset
+		profit = (1 - charge) * profit / depth2.AskPrice
 	} else {
-		side2 = common.Sell
-		price2 = tk2.BidPrice
-		marketQty2 = tk2.BidQty
-		if side1 == common.Buy {
-			qty2 = tk2.BidQty * price1
+		side2 = models.SideSell
+		price2 = depth2.BidPrice
+		// marketQty2 = depth2.BidQty
+		if side1 == models.SideBuy {
+			qty2 = depth2.BidQty * price1
 		} else {
 			// ありえない
 			return nil
 		}
-		currentSymbol = tk2.QuoteSymbol
-		profit = (1 - charge) * profit * tk2.BidPrice
+		currentAsset = depth2.QuoteAsset
+		profit = (1 - charge) * profit * depth2.BidPrice
 	}
 
 	if qty2 < minQty {
@@ -101,113 +177,105 @@ func calcTradeDistortion(startSymbol string, tickers []*models.Ticker, balance f
 	}
 
 	// 3回目の取引
-	tk3 := tickers[2]
-	symbol3 := tk3.BaseSymbol + tk3.QuoteSymbol
-	var side3 string
+	depth3 := rotateDepth.DepthList[2]
+	symbol3 := depth3.Symbol
+	var side3 models.OrderSide
 	var price3 float64
-	var marketQty3 float64
+	// var marketQty3 float64
 	var qty3 float64
-	if tk3.QuoteSymbol == currentSymbol {
-		side3 = common.Buy
-		price3 = tk3.AskPrice
-		marketQty3 = tk3.AskQty
-		qty3 = tk3.AskQty * (1.0 / tk3.AskPrice)
-		profit = (1 - charge) * profit / tk3.AskPrice
+	if depth3.QuoteAsset == currentAsset {
+		side3 = models.SideBuy
+		price3 = depth3.AskPrice
+		// marketQty3 = depth3.AskQty
+		qty3 = depth3.AskQty * (1.0 / depth3.AskPrice)
+		profit = (1 - charge) * profit / depth3.AskPrice
 	} else {
-		side3 = common.Sell
-		price3 = tk3.BidPrice
-		marketQty3 = tk3.BidQty
-		qty3 = tk3.BidQty * tk3.BidPrice
-		profit = (1 - charge) * profit * tk3.BidPrice
+		side3 = models.SideSell
+		price3 = depth3.BidPrice
+		// marketQty3 = depth3.BidQty
+		qty3 = depth3.BidQty * depth3.BidPrice
+		profit = (1 - charge) * profit * depth3.BidPrice
 	}
 
 	if qty3 < minQty {
 		minQty = qty3
 	}
 
-	if balance < minQty {
-		minQty = balance
+	if currentBalance < minQty {
+		minQty = currentBalance
 	}
 
 	score := (profit - 1.0)
 
-	var qqty1 float64
-	if side1 == common.Buy {
+	// var qqty1 float64
+	if side1 == models.SideBuy {
 		qty1 = minQty / price1
 	} else {
 		qty1 = minQty
 	}
-	qqty1 = minQty
+	// qqty1 = minQty
 
-	var qqty2 float64
-	if side2 == common.Buy {
-		if side1 == common.Buy {
+	// var qqty2 float64
+	if side2 == models.SideBuy {
+		if side1 == models.SideBuy {
 			qty2 = qty1 / price2
 		} else {
 			qty2 = (qty1 * price1) / price2
 		}
 	} else {
-		if side1 == common.Buy {
+		if side1 == models.SideBuy {
 			qty2 = qty1
 		} else {
 			qty2 = qty1 * price1
 		}
 	}
-	qqty2 = qqty1
+	// qqty2 = qqty1
 
-	var qqty3 float64
-	if side3 == common.Buy {
-		if side2 == common.Buy {
+	// var qqty3 float64
+	if side3 == models.SideBuy {
+		if side2 == models.SideBuy {
 			qty3 = qty2 / price3
 		} else {
 			qty3 = (qty2 * price2) / price3
 		}
 	} else {
-		if side2 == common.Buy {
+		if side2 == models.SideBuy {
 			qty3 = qty2
 		} else {
 			qty3 = qty2 * price2
 		}
 	}
-	qqty3 = qqty2
+	// qqty3 = qqty2
 
 	orders := []*models.Order{}
 	orders = append(orders, &models.Order{
 		Symbol:     symbol1,
-		QuoteAsset: tk1.QuoteSymbol,
-		BaseAsset:  tk1.BaseSymbol,
+		QuoteAsset: depth1.QuoteAsset,
+		BaseAsset:  depth1.BaseAsset,
 		Price:      price1,
 		Side:       side1,
-		MarketQty:  marketQty1,
-		BaseQty:    qty1,
-		QuoteQty:   qqty1,
+		Qty:        qty1,
 	})
 
 	orders = append(orders, &models.Order{
 		Symbol:     symbol2,
-		QuoteAsset: tk2.QuoteSymbol,
-		BaseAsset:  tk2.BaseSymbol,
+		QuoteAsset: depth2.QuoteAsset,
+		BaseAsset:  depth2.BaseAsset,
 		Price:      price2,
 		Side:       side2,
-		MarketQty:  marketQty2,
-		BaseQty:    qty2,
-		QuoteQty:   qqty2,
+		Qty:        qty2,
 	})
 
 	orders = append(orders, &models.Order{
 		Symbol:     symbol3,
-		QuoteAsset: tk3.QuoteSymbol,
-		BaseAsset:  tk3.BaseSymbol,
+		QuoteAsset: depth3.QuoteAsset,
+		BaseAsset:  depth3.BaseAsset,
 		Price:      price3,
 		Side:       side3,
-		MarketQty:  marketQty3,
-		BaseQty:    qty3,
-		QuoteQty:   qqty3,
+		Qty:        qty3,
 	})
 
-	return &models.Trade{
-		MaxQty: minQty,
-		Profit: score * minQty,
+	return &models.OrderBook{
 		Score:  score,
 		Orders: orders,
 	}

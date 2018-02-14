@@ -2,13 +2,14 @@ package infrastructure
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
-	common "github.com/OopsMouse/arbitgo/common"
 	models "github.com/OopsMouse/arbitgo/models"
+	"github.com/OopsMouse/arbitgo/util"
 	binance "github.com/OopsMouse/go-binance"
 	"github.com/go-kit/kit/log"
 	"github.com/jpillora/backoff"
@@ -16,11 +17,11 @@ import (
 )
 
 type Exchange struct {
-	Api          binance.Binance
-	QuoteSymbols []string
-	Symbols      []string
-	TickersCache cmap.ConcurrentMap
-	RetryOrder   int
+	Api            binance.Binance
+	QuoteAssetList []models.Asset
+	Symbols        []models.Symbol
+	DepthCache     cmap.ConcurrentMap
+	OrderRetry     int
 }
 
 func NewExchange(apikey string, secret string) Exchange {
@@ -34,32 +35,40 @@ func NewExchange(apikey string, secret string) Exchange {
 	ctx, _ := context.WithCancel(context.Background())
 	binanceService := binance.NewAPIService(
 		"https://www.binance.com",
-		os.Getenv("BINANCE_APIKEY"),
+		apikey,
 		hmacSigner,
 		logger,
 		ctx,
 	)
 
-	b := binance.NewBinance(binanceService)
-	exInfo, err := b.ExchangeInfo()
+	binance := binance.NewBinance(binanceService)
+	exInfo, err := binance.ExchangeInfo()
 	if err != nil {
+		// TODO: Retry処理
 		panic(err)
 	}
-	quoteSymbols := common.NewSet()
-	symbols := []string{}
+
+	quoteAssetSet := util.NewSet()
+	symbols := []models.Symbol{}
 	for _, s := range exInfo.Symbols {
 		if s.Symbol == "123456" { // binanceのゴミ
 			continue
 		}
-		quoteSymbols.Append(s.QuoteAsset)
-		symbols = append(symbols, s.Symbol)
+		quoteAssetSet.Append(s.QuoteAsset)
+		symbols = append(symbols, models.Symbol(s.Symbol))
 	}
+
+	quoteAssetList := []models.Asset{}
+	for _, s := range quoteAssetSet.ToSlice() {
+		quoteAssetList = append(quoteAssetList, models.Asset(s))
+	}
+
 	ex := Exchange{
-		Api:          b,
-		QuoteSymbols: quoteSymbols.ToSlice(),
-		Symbols:      symbols,
-		TickersCache: cmap.New(),
-		RetryOrder:   10,
+		Api:            binance,
+		QuoteAssetList: quoteAssetList,
+		Symbols:        symbols,
+		DepthCache:     cmap.New(),
+		OrderRetry:     10,
 	}
 	return ex
 }
@@ -68,45 +77,17 @@ func (ex Exchange) GetCharge() float64 {
 	return 0.001
 }
 
-func (ex Exchange) QuoteSymbol(symbol string) (*string, error) {
-	for _, s := range ex.QuoteSymbols {
-		if strings.HasSuffix(symbol, s) {
-			return &s, nil
-		}
-	}
-	return nil, fmt.Errorf("Not found quote symbol for %s", symbol)
-}
-
-func (ex Exchange) ConvertOrderBook2Ticker(symbol string, book *binance.OrderBook) (*models.Ticker, error) {
-	qs, err := ex.QuoteSymbol(symbol)
-	if err != nil {
-		return nil, err
-	}
-	bidPrice := book.Bids[0].Price
-	bidQty := book.Bids[0].Quantity
-	askPrice := book.Asks[0].Price
-	askQty := book.Asks[0].Quantity
-	return &models.Ticker{
-		BaseSymbol:  strings.Replace(symbol, *qs, "", 1),
-		QuoteSymbol: *qs,
-		BidPrice:    bidPrice,
-		AskPrice:    askPrice,
-		BidQty:      bidQty,
-		AskQty:      askQty,
-	}, nil
-}
-
-func (ex Exchange) GetBalance(symbol string) (*models.Balance, error) {
+func (ex Exchange) GetBalance(asset models.Asset) (*models.Balance, error) {
 	balances, err := ex.GetBalances()
 	if err != nil {
 		return nil, err
 	}
 	for _, b := range balances {
-		if b.Symbol == symbol {
+		if b.Asset == asset {
 			return b, nil
 		}
 	}
-	return nil, fmt.Errorf("Not found balance for %s", symbol)
+	return nil, fmt.Errorf("Not found balance for %s", asset)
 }
 
 func (ex Exchange) GetBalances() ([]*models.Balance, error) {
@@ -120,33 +101,62 @@ func (ex Exchange) GetBalances() ([]*models.Balance, error) {
 	balances := []*models.Balance{}
 	for _, b := range account.Balances {
 		balance := &models.Balance{
-			Symbol: b.Asset,
-			Free:   b.Free,
-			Total:  b.Free + b.Locked,
+			Asset: models.Asset(b.Asset),
+			Free:  b.Free,
+			Total: b.Free + b.Locked,
 		}
 		balances = append(balances, balance)
 	}
 	return balances, nil
 }
 
-func (ex Exchange) GetTicker(symbol string) (*models.Ticker, error) {
-	tk, _ := ex.TickersCache.Get(symbol)
-	return tk.(*models.Ticker), nil
+func (ex Exchange) SetDepth(symbol models.Symbol, depth *models.Depth) {
+	ex.DepthCache.Set(string(symbol), depth)
 }
 
-func (ex Exchange) GetMarket(startSymbol string) (*models.Market, error) {
-	tks := []*models.Ticker{}
-	for _, v := range ex.TickersCache.Items() {
-		tks = append(tks, v.(*models.Ticker))
+func (ex Exchange) GetDepthList() ([]*models.Depth, error) {
+	depthList := []*models.Depth{}
+	for _, v := range ex.DepthCache.Items() {
+		depthList = append(depthList, v.(*models.Depth))
 	}
-	return models.NewMarket(startSymbol, tks), nil
+	return depthList, nil
 }
 
-func (ex Exchange) OnUpdatedMarket(startSymbol string, recv chan *models.Market) error {
-	for _, s := range ex.Symbols {
-		go func(s string) {
-			obr := binance.OrderBookRequest{
-				Symbol: s,
+func GetQuoteAsset(symbol models.Symbol, quoteAssetList []models.Asset) (*models.Asset, error) {
+	for _, quoteAsset := range quoteAssetList {
+		if strings.HasSuffix(string(symbol), string(quoteAsset)) {
+			return &quoteAsset, nil
+		}
+	}
+	return nil, errors.New("not found quote asset: " + string(symbol))
+}
+
+func GetDepthInOrderBook(symbol models.Symbol, orderBook *binance.OrderBook, quoteAssetList []models.Asset) (*models.Depth, error) {
+	quoteAsset, err := GetQuoteAsset(symbol, quoteAssetList)
+	if err != nil {
+		return nil, err
+	}
+	baseAsset := strings.Replace(string(symbol), string(*quoteAsset), "", 1)
+	bidPrice := orderBook.Bids[0].Price
+	bidQty := orderBook.Bids[0].Quantity
+	askPrice := orderBook.Asks[0].Price
+	askQty := orderBook.Asks[0].Quantity
+
+	return &models.Depth{
+		BaseAsset:  models.Asset(baseAsset),
+		QuoteAsset: *quoteAsset,
+		BidPrice:   bidPrice,
+		AskPrice:   askPrice,
+		BidQty:     bidQty,
+		AskQty:     askQty,
+	}, nil
+}
+
+func (ex Exchange) OnUpdateDepthList(recv chan []*models.Depth) error {
+	for _, symbol := range ex.Symbols {
+		go func(symbol models.Symbol) {
+			request := binance.OrderBookRequest{
+				Symbol: string(symbol),
 			}
 
 			b := &backoff.Backoff{
@@ -155,7 +165,7 @@ func (ex Exchange) OnUpdatedMarket(startSymbol string, recv chan *models.Market)
 
 			var obch chan *binance.OrderBook
 			for {
-				ret, done, err := ex.Api.OrderBookWebsocket(obr)
+				ret, done, err := ex.Api.OrderBookWebsocket(request)
 				obch = ret
 				if err != nil {
 					d := b.Duration()
@@ -168,40 +178,44 @@ func (ex Exchange) OnUpdatedMarket(startSymbol string, recv chan *models.Market)
 				for {
 					select {
 					case orderbook := <-obch:
-						ticker, err := ex.ConvertOrderBook2Ticker(s, orderbook)
+						depth, err := GetDepthInOrderBook(
+							symbol,
+							orderbook,
+							ex.QuoteAssetList,
+						)
 						if err != nil {
-							fmt.Printf("%s, convert error, order book to ticker, last update id is %#v\n", err, orderbook.LastUpdateID)
+							fmt.Printf("%s, convert error, order book to depth, last update id is %#v\n", err, orderbook.LastUpdateID)
 							continue
 						}
-						ex.TickersCache.Set(s, ticker)
-						mkt, err := ex.GetMarket(startSymbol)
+						ex.SetDepth(symbol, depth)
+						depthList, err := ex.GetDepthList()
 						if err != nil {
-							fmt.Printf("error get market error, %s\n", startSymbol)
+							fmt.Printf("get market error")
 							continue
 						}
-						recv <- mkt
+						recv <- depthList
 					case <-done:
 						break
 					}
 				}
 			}
-		}(s)
+		}(symbol)
 	}
 	return nil
 }
 
 func (ex Exchange) SendOrder(order *models.Order) error {
 	side := binance.SideBuy
-	if order.Side == common.Buy {
+	if order.Side == models.SideBuy {
 		side = binance.SideBuy
 	} else {
 		side = binance.SideSell
 	}
 	nor := binance.NewOrderRequest{
-		Symbol:    order.Symbol,
+		Symbol:    string(order.Symbol),
 		Type:      binance.TypeLimit,
 		Side:      side,
-		Quantity:  order.BaseQty,
+		Quantity:  order.Qty,
 		Price:     order.Price,
 		Timestamp: time.Now(),
 	}
@@ -213,9 +227,9 @@ func (ex Exchange) SendOrder(order *models.Order) error {
 	b := &backoff.Backoff{
 		Max: 5 * time.Minute,
 	}
-	for i := 0; i < ex.RetryOrder; i++ {
+	for i := 0; i < ex.OrderRetry; i++ {
 		oor := binance.OpenOrdersRequest{
-			Symbol:    order.Symbol,
+			Symbol:    string(order.Symbol),
 			Timestamp: time.Now(),
 		}
 		oo, err := ex.Api.OpenOrders(oor)
@@ -228,7 +242,7 @@ func (ex Exchange) SendOrder(order *models.Order) error {
 		time.Sleep(b.Duration())
 	}
 	cor := binance.CancelOrderRequest{
-		Symbol:    order.Symbol,
+		Symbol:    string(order.Symbol),
 		OrderID:   orderID,
 		Timestamp: time.Now(),
 	}

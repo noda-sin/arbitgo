@@ -3,66 +3,59 @@ package infrastructure
 import (
 	"fmt"
 
-	"github.com/OopsMouse/arbitgo/common"
 	models "github.com/OopsMouse/arbitgo/models"
 )
 
 type ExchangeStub struct {
 	Exchange
-	Balances map[string]*models.Balance
+	Balances map[models.Asset]*models.Balance
 }
 
-func NewExchangeStub(apikey string, secret string, startSymbol string) ExchangeStub {
+func NewExchangeStub(apikey string, secret string, initialBalances map[models.Asset]*models.Balance) ExchangeStub {
 	ex := NewExchange(apikey, secret)
-	balances := map[string]*models.Balance{}
-	balances[startSymbol] = &models.Balance{
-		Symbol: startSymbol,
-		Free:   100.0,
-		Total:  100.0,
-	}
 	return ExchangeStub{
 		Exchange: ex,
-		Balances: balances,
+		Balances: initialBalances,
 	}
 }
 
-func (ex ExchangeStub) GetBalance(symbol string) (*models.Balance, error) {
+func (ex ExchangeStub) GetBalance(asset models.Asset) (*models.Balance, error) {
 	for k, b := range ex.Balances {
-		if k == symbol {
+		if k == asset {
 			return b, nil
 		}
 	}
-	return nil, fmt.Errorf("Not found balance for %s", symbol)
+	return nil, fmt.Errorf("Not found balance for %s", asset)
 }
 
-func (ex ExchangeStub) NewBalance(symbol string) {
-	balance := ex.Balances[symbol]
+func (ex ExchangeStub) NewBalance(asset models.Asset) {
+	balance := ex.Balances[asset]
 	if balance == nil {
-		ex.Balances[symbol] = &models.Balance{
-			Symbol: symbol,
-			Free:   0.0,
-			Total:  0.0,
+		ex.Balances[asset] = &models.Balance{
+			Asset: asset,
+			Free:  0.0,
+			Total: 0.0,
 		}
 	}
 }
 
-func (ex ExchangeStub) AddBalanceQty(symbol string, qty float64) {
-	ex.NewBalance(symbol)
-	balance := ex.Balances[symbol]
-	ex.Balances[symbol] = &models.Balance{
-		Symbol: symbol,
-		Free:   balance.Free + qty,
-		Total:  balance.Total + qty,
+func (ex ExchangeStub) AddBalance(asset models.Asset, qty float64) {
+	ex.NewBalance(asset)
+	balance := ex.Balances[asset]
+	ex.Balances[asset] = &models.Balance{
+		Asset: asset,
+		Free:  balance.Free + qty,
+		Total: balance.Total + qty,
 	}
 }
 
-func (ex ExchangeStub) SubBalanceQty(symbol string, qty float64) {
-	ex.NewBalance(symbol)
-	balance := ex.Balances[symbol]
-	ex.Balances[symbol] = &models.Balance{
-		Symbol: symbol,
-		Free:   balance.Free - qty,
-		Total:  balance.Total - qty,
+func (ex ExchangeStub) SubBalance(asset models.Asset, qty float64) {
+	ex.NewBalance(asset)
+	balance := ex.Balances[asset]
+	ex.Balances[asset] = &models.Balance{
+		Asset: asset,
+		Free:  balance.Free - qty,
+		Total: balance.Total - qty,
 	}
 }
 
@@ -74,35 +67,35 @@ func (ex ExchangeStub) GetBalances() ([]*models.Balance, error) {
 	return bs, nil
 }
 
-func (ex ExchangeStub) GetMarket(startSymbol string) (*models.Market, error) {
-	return ex.Exchange.GetMarket(startSymbol)
+func (ex ExchangeStub) GetDepthList() ([]*models.Depth, error) {
+	return ex.Exchange.GetDepthList()
 }
 
-func (ex ExchangeStub) OnUpdatedMarket(startSymbol string, recv chan *models.Market) error {
-	return ex.Exchange.OnUpdatedMarket(startSymbol, recv)
+func (ex ExchangeStub) OnUpdateDepthList(recv chan []*models.Depth) error {
+	return ex.Exchange.OnUpdateDepthList(recv)
 }
 
 func (ex ExchangeStub) SendOrder(order *models.Order) error {
-	if order.Side == common.Buy {
+	if order.Side == models.SideBuy {
 		balance, err := ex.GetBalance(order.QuoteAsset)
 		if err != nil {
 			return err
 		}
-		if balance.Free < order.BaseQty*order.Price {
-			return fmt.Errorf("Insufficent balance: %s, %f, %f\n", balance.Symbol, balance.Free, order.BaseQty*order.Price)
+		if balance.Free < order.Qty*order.Price {
+			return fmt.Errorf("Insufficent balance: %s, %f, %f\n", balance.Asset, balance.Free, order.Qty*order.Price)
 		}
-		ex.SubBalanceQty(order.QuoteAsset, order.BaseQty*order.Price)
-		ex.AddBalanceQty(order.BaseAsset, order.BaseQty)
+		ex.SubBalance(order.QuoteAsset, order.Qty*order.Price)
+		ex.AddBalance(order.BaseAsset, order.Qty)
 	} else {
 		balance, err := ex.GetBalance(order.BaseAsset)
 		if err != nil {
 			return err
 		}
-		if balance.Free < order.BaseQty {
-			return fmt.Errorf("Insufficent balance: %s, %f, %f\n", balance.Symbol, balance.Free, order.BaseQty)
+		if balance.Free < order.Qty {
+			return fmt.Errorf("Insufficent balance: %s, %f, %f\n", balance.Asset, balance.Free, order.Qty)
 		}
-		ex.AddBalanceQty(order.QuoteAsset, order.BaseQty*order.Price)
-		ex.SubBalanceQty(order.BaseAsset, order.BaseQty)
+		ex.AddBalance(order.QuoteAsset, order.Qty*order.Price)
+		ex.SubBalance(order.BaseAsset, order.Qty)
 	}
 	return nil
 }

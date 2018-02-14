@@ -3,7 +3,8 @@ package main
 import (
 	"os"
 
-	"github.com/OopsMouse/arbitgo/common"
+	"github.com/OopsMouse/arbitgo/models"
+
 	"github.com/OopsMouse/arbitgo/infrastructure"
 	"github.com/OopsMouse/arbitgo/usecase"
 	"github.com/urfave/cli"
@@ -18,7 +19,7 @@ func main() {
 	var dryrun bool
 	var apiKey string
 	var secret string
-	var asset string
+	var assetString string
 
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
@@ -41,7 +42,7 @@ func main() {
 		cli.StringFlag{
 			Name:        "asset, as",
 			Usage:       "start asset",
-			Destination: &asset,
+			Destination: &assetString,
 		},
 	}
 
@@ -49,31 +50,57 @@ func main() {
 		if apiKey == "" || secret == "" {
 			return cli.NewExitError("api key and secret is required", 0)
 		}
-		if asset == "" {
-			asset = common.BTC
-		}
-		var exchange usecase.Exchange
-		if dryrun {
-			exchange = infrastructure.NewExchangeStub(
-				apiKey,
-				secret,
-				asset,
-			)
+
+		var mainAsset models.Asset
+		if assetString == "" {
+			mainAsset = models.AssetBTC
 		} else {
-			exchange = infrastructure.NewExchange(
-				apiKey,
-				secret,
-			)
+			mainAsset = models.Asset(assetString)
 		}
-		anlyzr := usecase.NewMarketAnalyzer()
-		trader := usecase.NewArbitrader(
-			exchange,
-			anlyzr,
-			asset,
-		)
-		trader.Run()
+
+		exchange := CreateExchange(apiKey, secret, mainAsset, dryrun)
+		analyzer := CreateAnalyzer(mainAsset, exchange.GetCharge(), 0.0)
+		arbitrader := CreateTrader(exchange, analyzer, mainAsset)
+		arbitrader.Run()
 		return nil
 	}
 
 	app.Run(os.Args)
+}
+
+func CreateExchange(apikey string, secret string, mainAsset models.Asset, dryRun bool) usecase.Exchange {
+	if dryRun {
+		balances := map[models.Asset]*models.Balance{}
+		balances[mainAsset] = &models.Balance{
+			Asset: mainAsset,
+			Free:  100.0,
+			Total: 100.0,
+		}
+		return infrastructure.NewExchangeStub(
+			apikey,
+			secret,
+			balances,
+		)
+	}
+
+	return infrastructure.NewExchange(
+		apikey,
+		secret,
+	)
+}
+
+func CreateAnalyzer(mainAsset models.Asset, charge float64, threathold float64) usecase.MarketAnalyzer {
+	return usecase.NewMarketAnalyzer(
+		mainAsset,
+		charge,
+		threathold,
+	)
+}
+
+func CreateTrader(exchange usecase.Exchange, analyzer usecase.MarketAnalyzer, mainAsset models.Asset) *usecase.Arbitrader {
+	return usecase.NewArbitrader(
+		exchange,
+		analyzer,
+		mainAsset,
+	)
 }

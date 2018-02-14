@@ -10,29 +10,29 @@ import (
 type Arbitrader struct {
 	Exchange
 	MarketAnalyzer
-	StartSymbol string
+	MainAsset models.Asset
 }
 
-func NewArbitrader(ex Exchange, ma MarketAnalyzer, s string) *Arbitrader {
+func NewArbitrader(ex Exchange, ma MarketAnalyzer, mainAsset models.Asset) *Arbitrader {
 	return &Arbitrader{
 		Exchange:       ex,
 		MarketAnalyzer: ma,
-		StartSymbol:    s,
+		MainAsset:      mainAsset,
 	}
 }
 
 func (arbit *Arbitrader) Run() {
-	fmt.Printf("started arbit go...\n")
-	fmt.Printf("start assets: %s\n", arbit.StartSymbol)
-	arbit.PrintBalances()
-
-	ch := make(chan *models.Market)
-	err := arbit.Exchange.OnUpdatedMarket(arbit.StartSymbol, ch)
+	// Depthの変更通知登録
+	ch := make(chan []*models.Depth)
+	err := arbit.Exchange.OnUpdateDepthList(ch)
 	if err != nil {
+		// TODO: エラー処理
 		panic(err)
 	}
+
 	for {
-		balance, err := arbit.Exchange.GetBalance(arbit.StartSymbol)
+		// Main Assetの残高を取得
+		mainAssetBalance, err := arbit.Exchange.GetBalance(arbit.MainAsset)
 
 		if err != nil {
 			fmt.Printf("get balance error. wait 5 minute, %v\n", err)
@@ -41,40 +41,27 @@ func (arbit *Arbitrader) Run() {
 		}
 
 		for {
-			market := <-ch
-			trade := arbit.MarketAnalyzer.GetBestTrade(
-				market,
-				arbit.Exchange.GetCharge(),
-				balance.Free,
-				0.001,
+			depthList := <-ch
+			bestOrderBook := arbit.MarketAnalyzer.GenerateBestOrderBook(
+				depthList,
+				mainAssetBalance.Free,
 			)
-
-			if trade == nil {
+			if bestOrderBook == nil {
 				continue
 			}
 
-			fmt.Printf("found a route that can take profits, profit => %f\n", trade.Profit)
-			err = arbit.Trade(trade)
+			err = arbit.TryTrade(bestOrderBook)
 			if err != nil {
-				fmt.Printf("please manual recovery. will be shutdown\n")
-				panic(err)
+				// TODO: Recovery
 			}
-
-			fmt.Printf("success to arbitrage\n")
-			arbit.PrintBalances()
-			time.Sleep(10 * time.Second)
 			break
 		}
-
-		fmt.Printf("success to arbitrage\n")
-		arbit.PrintBalances()
-		time.Sleep(10 * time.Second)
 	}
 }
 
-func (arbit *Arbitrader) Trade(tr *models.Trade) error {
-	for i, o := range tr.Orders {
-		fmt.Printf("[%d] symbol => %s, side => %s, price => %f, qty => %f\n", i, o.Symbol, o.Side, o.Price, o.BaseQty)
+func (arbit *Arbitrader) TryTrade(orderBook *models.OrderBook) error {
+	for i, o := range orderBook.Orders {
+		fmt.Printf("[%d] symbol => %s, side => %s, price => %f, qty => %f\n", i, o.Symbol, o.Side, o.Price, o.Qty)
 
 		err := arbit.Exchange.SendOrder(o)
 		if err != nil {
@@ -82,17 +69,18 @@ func (arbit *Arbitrader) Trade(tr *models.Trade) error {
 			return err
 		}
 	}
+
 	return nil
 }
 
-func (arbit *Arbitrader) PrintBalances() {
-	balances, err := arbit.Exchange.GetBalances()
-	if err != nil {
-		return
-	}
+// func (arbit *Arbitrader) PrintBalances() {
+// 	balances, err := arbit.Exchange.GetBalances()
+// 	if err != nil {
+// 		return
+// 	}
 
-	fmt.Printf("balances:\n")
-	for _, b := range balances {
-		fmt.Printf("[%s] => %f\n", b.Symbol, b.Total)
-	}
-}
+// 	fmt.Printf("balances:\n")
+// 	for _, b := range balances {
+// 		fmt.Printf("[%s] => %f\n", b.Asset, b.Total)
+// 	}
+// }
