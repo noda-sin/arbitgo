@@ -8,13 +8,15 @@ import (
 type MarketAnalyzer struct {
 	MainAsset models.Asset
 	Charge    float64
+	MaxQty    float64
 	Threshold float64
 }
 
-func NewMarketAnalyzer(mainAsset models.Asset, charge float64, threshold float64) MarketAnalyzer {
+func NewMarketAnalyzer(mainAsset models.Asset, charge float64, maxqty float64, threshold float64) MarketAnalyzer {
 	return MarketAnalyzer{
 		MainAsset: mainAsset,
 		Charge:    charge,
+		MaxQty:    maxqty,
 		Threshold: threshold,
 	}
 }
@@ -22,7 +24,7 @@ func NewMarketAnalyzer(mainAsset models.Asset, charge float64, threshold float64
 func (ma *MarketAnalyzer) GenerateBestOrderBook(depthList []*models.Depth, currBalance float64) *models.OrderBook {
 	var best *models.OrderBook
 	for _, d := range GenerateRotationDepthList(ma.MainAsset, depthList) {
-		orderBook := GenerateOrderBook(ma.MainAsset, d, currBalance, ma.Charge)
+		orderBook := GenerateOrderBook(ma.MainAsset, d, currBalance, ma.MaxQty, ma.Charge)
 		if orderBook == nil {
 			continue
 		}
@@ -107,7 +109,7 @@ func GenerateRotationDepthList(mainAsset models.Asset, depthList []*models.Depth
 	return rotateDepthList
 }
 
-func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth, currentBalance float64, charge float64) *models.OrderBook {
+func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth, currentBalance float64, maxqty float64, charge float64) *models.OrderBook {
 	if rotateDepth == nil || len(rotateDepth.DepthList) == 0 {
 		return nil
 	}
@@ -203,6 +205,10 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 
 	if currentBalance < minQty {
 		minQty = currentBalance
+	}
+
+	if maxqty != 0 && maxqty < minQty {
+		minQty = maxqty
 	}
 
 	score := (profit - 1.0)
