@@ -12,7 +12,6 @@ import (
 	"github.com/OopsMouse/arbitgo/util"
 	binance "github.com/OopsMouse/go-binance"
 	"github.com/go-kit/kit/log"
-	"github.com/jpillora/backoff"
 	"github.com/orcaman/concurrent-map"
 )
 
@@ -41,10 +40,16 @@ func NewExchange(apikey string, secret string) Exchange {
 		ctx,
 	)
 
-	binance := binance.NewBinance(binanceService)
-	exInfo, err := binance.ExchangeInfo()
+	b := binance.NewBinance(binanceService)
+
+	var exInfo *binance.ExchangeInfo
+	err := util.BackoffRetry(5, func() error {
+		e, err := b.ExchangeInfo()
+		exInfo = e
+		return err
+	})
+
 	if err != nil {
-		// TODO: Retry処理
 		panic(err)
 	}
 
@@ -64,7 +69,7 @@ func NewExchange(apikey string, secret string) Exchange {
 	}
 
 	ex := Exchange{
-		Api:            binance,
+		Api:            b,
 		QuoteAssetList: quoteAssetList,
 		Symbols:        symbols,
 		DepthCache:     cmap.New(),
@@ -94,7 +99,12 @@ func (ex Exchange) GetBalances() ([]*models.Balance, error) {
 	acr := binance.AccountRequest{
 		Timestamp: time.Now(),
 	}
-	account, err := ex.Api.Account(acr)
+	var account *binance.Account
+	err := util.BackoffRetry(5, func() error {
+		a, err := ex.Api.Account(acr)
+		account = a
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -163,21 +173,19 @@ func (ex Exchange) OnUpdateDepthList(recv chan []*models.Depth) error {
 				Symbol: string(symbol),
 			}
 
-			b := &backoff.Backoff{
-				Max: 5 * time.Minute,
-			}
-
-			var obch chan *binance.OrderBook
 			for {
-				ret, done, err := ex.Api.OrderBookWebsocket(request)
-				obch = ret
+				var obch chan *binance.OrderBook
+				var done chan struct{}
+				err := util.BackoffRetry(5, func() error {
+					r, d, err := ex.Api.OrderBookWebsocket(request)
+					obch = r
+					done = d
+					return err
+				})
+
 				if err != nil {
-					d := b.Duration()
-					fmt.Printf("%s, reconnecting in %s", err, d)
-					time.Sleep(d)
 					continue
 				}
-				b.Reset()
 
 				for {
 					select {
@@ -234,34 +242,45 @@ func (ex Exchange) SendOrder(order *models.Order) error {
 			Timestamp: time.Now(),
 		}
 	}
-	po, err := ex.Api.NewOrder(nor)
+	var po *binance.ProcessedOrder
+	err := util.BackoffRetry(5, func() error {
+		p, err := ex.Api.NewOrder(nor)
+		po = p
+		return err
+	})
 	if err != nil {
 		return err
 	}
 	orderID := po.OrderID
-	b := &backoff.Backoff{
-		Max: 5 * time.Minute,
-	}
 	for i := 0; i < ex.OrderRetry; i++ {
 		oor := binance.OpenOrdersRequest{
 			Symbol:    string(order.Symbol),
 			Timestamp: time.Now(),
 		}
-		oo, err := ex.Api.OpenOrders(oor)
+		var oo []*binance.ExecutedOrder
+		err := util.BackoffRetry(5, func() error {
+			o, err := ex.Api.OpenOrders(oor)
+			oo = o
+			return err
+		})
 		if err != nil {
 			return err
 		}
 		if len(oo) == 0 {
 			return nil
 		}
-		time.Sleep(b.Duration())
+		time.Sleep(10 * time.Second)
 	}
+
 	cor := binance.CancelOrderRequest{
 		Symbol:    string(order.Symbol),
 		OrderID:   orderID,
 		Timestamp: time.Now(),
 	}
-	_, err = ex.Api.CancelOrder(cor)
+	err = util.BackoffRetry(5, func() error {
+		_, err := ex.Api.CancelOrder(cor)
+		return err
+	})
 	if err != nil {
 		return err
 	}

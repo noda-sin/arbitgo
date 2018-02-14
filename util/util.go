@@ -3,6 +3,9 @@ package util
 import (
 	"path"
 	"runtime"
+	"time"
+
+	"github.com/jpillora/backoff"
 )
 
 func Index(vs []string, t string) int {
@@ -86,4 +89,22 @@ func GetCurrentFile() string {
 func GetCurrentDir() string {
 	_, filename, _, _ := runtime.Caller(1)
 	return path.Dir(filename)
+}
+
+type Operation func() error
+
+func BackoffRetry(retry int, op Operation) error {
+	b := &backoff.Backoff{
+		Max: 5 * time.Minute,
+	}
+	var err error
+	for i := 0; i < retry; i++ {
+		err = op()
+		if err == nil {
+			return nil
+		}
+		d := b.Duration()
+		time.Sleep(d)
+	}
+	return err
 }
