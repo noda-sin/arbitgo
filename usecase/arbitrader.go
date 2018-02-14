@@ -1,10 +1,10 @@
 package usecase
 
 import (
-	"fmt"
 	"time"
 
 	models "github.com/OopsMouse/arbitgo/models"
+	log "github.com/sirupsen/logrus"
 )
 
 type Arbitrader struct {
@@ -22,11 +22,13 @@ func NewArbitrader(ex Exchange, ma MarketAnalyzer, mainAsset models.Asset) *Arbi
 }
 
 func (arbit *Arbitrader) Run() {
+	log.WithField("main asset", arbit.MainAsset).Info("start arbitgo")
+
 	// Depthの変更通知登録
 	ch := make(chan []*models.Depth)
 	err := arbit.Exchange.OnUpdateDepthList(ch)
 	if err != nil {
-		// TODO: エラー処理
+		log.WithError(err).Error("failed to add listener on update depth")
 		panic(err)
 	}
 
@@ -35,7 +37,7 @@ func (arbit *Arbitrader) Run() {
 		mainAssetBalance, err := arbit.Exchange.GetBalance(arbit.MainAsset)
 
 		if err != nil {
-			fmt.Printf("get balance error. wait 5 minute, %v\n", err)
+			log.WithError(err).Error("failed to get balances")
 			time.Sleep(5 * time.Minute)
 			continue
 		}
@@ -52,8 +54,14 @@ func (arbit *Arbitrader) Run() {
 
 			err = arbit.Trade(bestOrderBook)
 			if err != nil {
+				log.WithError(err).Error("failed to arbit trade")
+				log.Error("begin to recovery balances")
+
 				arbit.Recovery()
 			}
+
+			arbit.LogMaiAssetBalance()
+			time.Sleep(5 * time.Second)
 			break
 		}
 	}
@@ -61,10 +69,17 @@ func (arbit *Arbitrader) Run() {
 
 func (arbit *Arbitrader) Trade(orderBook *models.OrderBook) error {
 	for i, o := range orderBook.Orders {
-		fmt.Printf("[%d] symbol => %s, side => %s, price => %f, qty => %f\n", i, o.Symbol, o.Side, o.Price, o.Qty)
+
+		log.WithFields(log.Fields{
+			"number": i,
+			"symbol": string(o.Symbol),
+			"side":   o.Side,
+			"type":   o.OrderType,
+			"price":  o.Price,
+			"qty":    o.Qty,
+		}).Info("challenge to order")
 		err := arbit.Exchange.SendOrder(o)
 		if err != nil {
-			fmt.Printf("when trading, unknown error occur, %v\n", err)
 			return err
 		}
 	}
@@ -74,27 +89,31 @@ func (arbit *Arbitrader) Trade(orderBook *models.OrderBook) error {
 func (arbit *Arbitrader) Recovery() {
 	balances, err := arbit.Exchange.GetBalances()
 	if err != nil {
+		log.WithError(err).Error("failed to recovery")
+		log.Error("please confirm and manualy recovery")
+
 		panic(err)
 	}
+
 	orderBook := arbit.MarketAnalyzer.GenerateRecoveryOrderBook(
 		arbit.MainAsset,
 		arbit.Exchange.GetSymbols(),
 		balances,
 	)
+
 	err = arbit.Trade(orderBook)
 	if err != nil {
+		log.WithError(err).Error("failed to recovery")
+		log.Error("please confirm and manualy recovery")
+
 		panic(err)
 	}
 }
 
-// func (arbit *Arbitrader) PrintBalances() {
-// 	balances, err := arbit.Exchange.GetBalances()
-// 	if err != nil {
-// 		return
-// 	}
-
-// 	fmt.Printf("balances:\n")
-// 	for _, b := range balances {
-// 		fmt.Printf("[%s] => %f\n", b.Asset, b.Total)
-// 	}
-// }
+func (arbit *Arbitrader) LogMaiAssetBalance() {
+	balance, err := arbit.Exchange.GetBalance(arbit.MainAsset)
+	if err != nil {
+		return
+	}
+	log.WithField(string(arbit.MainAsset), balance.Total).Info("report balance")
+}
