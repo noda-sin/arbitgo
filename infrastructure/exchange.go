@@ -97,7 +97,8 @@ func (ex Exchange) GetBalance(asset models.Asset) (*models.Balance, error) {
 
 func (ex Exchange) GetBalances() ([]*models.Balance, error) {
 	acr := binance.AccountRequest{
-		Timestamp: time.Now(),
+		RecvWindow: 5 * time.Second,
+		Timestamp:  time.Now(),
 	}
 	var account *binance.Account
 	err := util.BackoffRetry(5, func() error {
@@ -157,6 +158,7 @@ func GetDepthInOrderBook(symbol models.Symbol, orderBook *binance.OrderBook, quo
 	askQty := orderBook.Asks[0].Quantity
 
 	return &models.Depth{
+		Symbol:     symbol,
 		BaseAsset:  models.Asset(baseAsset),
 		QuoteAsset: *quoteAsset,
 		BidPrice:   bidPrice,
@@ -226,12 +228,13 @@ func (ex Exchange) SendOrder(order *models.Order) error {
 	var nor binance.NewOrderRequest
 	if order.OrderType == models.TypeLimit {
 		nor = binance.NewOrderRequest{
-			Symbol:    string(order.Symbol),
-			Type:      binance.TypeLimit,
-			Side:      side,
-			Quantity:  order.Qty,
-			Price:     order.Price,
-			Timestamp: time.Now(),
+			Symbol:      string(order.Symbol),
+			Type:        binance.TypeLimit,
+			TimeInForce: binance.GTC,
+			Side:        side,
+			Quantity:    order.Qty,
+			Price:       order.Price,
+			Timestamp:   time.Now(),
 		}
 	} else {
 		nor = binance.NewOrderRequest{
@@ -242,8 +245,14 @@ func (ex Exchange) SendOrder(order *models.Order) error {
 			Timestamp: time.Now(),
 		}
 	}
-	var po *binance.ProcessedOrder
 	err := util.BackoffRetry(5, func() error {
+		return ex.Api.NewOrderTest(nor)
+	})
+	if err != nil {
+		return err
+	}
+	var po *binance.ProcessedOrder
+	err = util.BackoffRetry(5, func() error {
 		p, err := ex.Api.NewOrder(nor)
 		po = p
 		return err
@@ -254,8 +263,9 @@ func (ex Exchange) SendOrder(order *models.Order) error {
 	orderID := po.OrderID
 	for i := 0; i < ex.OrderRetry; i++ {
 		oor := binance.OpenOrdersRequest{
-			Symbol:    string(order.Symbol),
-			Timestamp: time.Now(),
+			Symbol:     string(order.Symbol),
+			RecvWindow: 5 * time.Second,
+			Timestamp:  time.Now(),
 		}
 		var oo []*binance.ExecutedOrder
 		err := util.BackoffRetry(5, func() error {
@@ -273,9 +283,10 @@ func (ex Exchange) SendOrder(order *models.Order) error {
 	}
 
 	cor := binance.CancelOrderRequest{
-		Symbol:    string(order.Symbol),
-		OrderID:   orderID,
-		Timestamp: time.Now(),
+		Symbol:     string(order.Symbol),
+		OrderID:    orderID,
+		RecvWindow: 5 * time.Second,
+		Timestamp:  time.Now(),
 	}
 	err = util.BackoffRetry(5, func() error {
 		_, err := ex.Api.CancelOrder(cor)

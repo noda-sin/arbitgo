@@ -52,6 +52,8 @@ func (arbit *Arbitrader) Run() {
 				continue
 			}
 
+			log.WithField("score", bestOrderBook.Score).Info("found best order book")
+
 			err = arbit.Trade(bestOrderBook)
 			if err != nil {
 				log.WithError(err).Error("failed to arbit trade")
@@ -60,7 +62,7 @@ func (arbit *Arbitrader) Run() {
 				arbit.Recovery()
 			}
 
-			arbit.LogMaiAssetBalance()
+			arbit.LogBalances()
 			time.Sleep(5 * time.Second)
 			break
 		}
@@ -69,7 +71,6 @@ func (arbit *Arbitrader) Run() {
 
 func (arbit *Arbitrader) Trade(orderBook *models.OrderBook) error {
 	for i, o := range orderBook.Orders {
-
 		log.WithFields(log.Fields{
 			"number": i,
 			"symbol": string(o.Symbol),
@@ -110,10 +111,12 @@ func (arbit *Arbitrader) Recovery() {
 	}
 }
 
-func (arbit *Arbitrader) LogMaiAssetBalance() {
-	balance, err := arbit.Exchange.GetBalance(arbit.MainAsset)
+func (arbit *Arbitrader) LogBalances() {
+	balances, err := arbit.Exchange.GetBalances()
 	if err != nil {
 		return
 	}
-	log.WithField(string(arbit.MainAsset), balance.Total).Info("report balance")
+	for _, balance := range balances {
+		log.WithField(string(balance.Asset), balance.Total).Info("report balance")
+	}
 }

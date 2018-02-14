@@ -318,6 +318,15 @@ func GenerateRecoveryOrder(mainAsset models.Asset, symbols []models.Symbol, bala
 				Side:       models.SideSell,
 				Qty:        balance.Free,
 			}
+		} else if string(symbol) == string(mainAsset)+string(targetAsset) {
+			return &models.Order{
+				Symbol:     symbol,
+				BaseAsset:  mainAsset,
+				QuoteAsset: targetAsset,
+				OrderType:  models.TypeMarket,
+				Side:       models.SideBuy,
+				Qty:        balance.Free,
+			}
 		}
 	}
 	return nil

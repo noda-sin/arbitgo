@@ -85,8 +85,8 @@ func CreateExchange(apikey string, secret string, mainAsset models.Asset, dryRun
 		balances := map[models.Asset]*models.Balance{}
 		balances[mainAsset] = &models.Balance{
 			Asset: mainAsset,
-			Free:  100.0,
-			Total: 100.0,
+			Free:  0.12,
+			Total: 0.12,
 		}
 		return infrastructure.NewExchangeStub(
 			apikey,
