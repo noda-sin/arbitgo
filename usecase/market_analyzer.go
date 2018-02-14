@@ -6,16 +6,16 @@ import (
 )
 
 type MarketAnalyzer struct {
-	MainAsset  models.Asset
-	Charge     float64
-	Threashold float64
+	MainAsset models.Asset
+	Charge    float64
+	Threshold float64
 }
 
-func NewMarketAnalyzer(mainAsset models.Asset, charge float64, threashold float64) MarketAnalyzer {
+func NewMarketAnalyzer(mainAsset models.Asset, charge float64, threshold float64) MarketAnalyzer {
 	return MarketAnalyzer{
-		MainAsset:  mainAsset,
-		Charge:     charge,
-		Threashold: threashold,
+		MainAsset: mainAsset,
+		Charge:    charge,
+		Threshold: threshold,
 	}
 }
 
@@ -31,7 +31,7 @@ func (ma *MarketAnalyzer) GenerateBestOrderBook(depthList []*models.Depth, currB
 		}
 	}
 
-	if best == nil || best.Score <= ma.Threashold {
+	if best == nil || best.Score <= ma.Threshold {
 		return nil
 	}
 

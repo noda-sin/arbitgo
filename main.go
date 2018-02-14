@@ -20,6 +20,7 @@ func main() {
 	var apiKey string
 	var secret string
 	var assetString string
+	var threshold float64
 
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
@@ -44,6 +45,11 @@ func main() {
 			Usage:       "start asset",
 			Destination: &assetString,
 		},
+		cli.Float64Flag{
+			Name:        "threshold, t",
+			Usage:       "profit threshold",
+			Destination: &threshold,
+		},
 	}
 
 	app.Action = func(c *cli.Context) error {
@@ -59,7 +65,7 @@ func main() {
 		}
 
 		exchange := CreateExchange(apiKey, secret, mainAsset, dryrun)
-		analyzer := CreateAnalyzer(mainAsset, exchange.GetCharge(), 0.0)
+		analyzer := CreateAnalyzer(mainAsset, exchange.GetCharge(), threshold)
 		arbitrader := CreateTrader(exchange, analyzer, mainAsset)
 		arbitrader.Run()
 		return nil
@@ -89,11 +95,11 @@ func CreateExchange(apikey string, secret string, mainAsset models.Asset, dryRun
 	)
 }
 
-func CreateAnalyzer(mainAsset models.Asset, charge float64, threathold float64) usecase.MarketAnalyzer {
+func CreateAnalyzer(mainAsset models.Asset, charge float64, threshold float64) usecase.MarketAnalyzer {
 	return usecase.NewMarketAnalyzer(
 		mainAsset,
 		charge,
-		threathold,
+		threshold,
 	)
 }
 
