@@ -154,9 +154,22 @@ func GetDepthInOrderBook(symbol models.Symbol, orderBook *binance.OrderBook, quo
 	baseAsset := strings.Replace(string(symbol), string(*quoteAsset), "", 1)
 	bidPrice := orderBook.Bids[0].Price
 	bidQty := orderBook.Bids[0].Quantity
+	for i := 1; i < len(orderBook.Bids); i++ {
+		if orderBook.Bids[i].Price == bidPrice {
+			bidQty += orderBook.Bids[i].Quantity
+		} else {
+			break
+		}
+	}
 	askPrice := orderBook.Asks[0].Price
 	askQty := orderBook.Asks[0].Quantity
-
+	for i := 1; i < len(orderBook.Asks); i++ {
+		if orderBook.Asks[i].Price == askPrice {
+			askQty += orderBook.Asks[i].Quantity
+		} else {
+			break
+		}
+	}
 	return &models.Depth{
 		Symbol:     symbol,
 		BaseAsset:  models.Asset(baseAsset),
@@ -173,6 +186,7 @@ func (ex Exchange) OnUpdateDepthList(recv chan []*models.Depth) error {
 		go func(symbol models.Symbol) {
 			request := binance.OrderBookRequest{
 				Symbol: string(symbol),
+				Limit:  20,
 			}
 
 			for {
