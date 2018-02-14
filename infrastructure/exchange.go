@@ -186,7 +186,7 @@ func (ex Exchange) OnUpdateDepthList(recv chan []*models.Depth) error {
 		go func(symbol models.Symbol) {
 			request := binance.OrderBookRequest{
 				Symbol: string(symbol),
-				Limit:  20,
+				Level:  20,
 			}
 
 			for {
