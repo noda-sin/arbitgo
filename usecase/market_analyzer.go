@@ -309,7 +309,7 @@ func (ma *MarketAnalyzer) GenerateRecoveryOrderBook(mainAsset models.Asset, symb
 func GenerateRecoveryOrder(mainAsset models.Asset, symbols []models.Symbol, balance *models.Balance) *models.Order {
 	targetAsset := balance.Asset
 	for _, symbol := range symbols {
-		if string(symbol) == string(targetAsset)+string(mainAsset) {
+		if symbol.String() == string(targetAsset)+string(mainAsset) {
 			return &models.Order{
 				Symbol:     symbol,
 				BaseAsset:  targetAsset,
@@ -318,7 +318,7 @@ func GenerateRecoveryOrder(mainAsset models.Asset, symbols []models.Symbol, bala
 				Side:       models.SideSell,
 				Qty:        balance.Free,
 			}
-		} else if string(symbol) == string(mainAsset)+string(targetAsset) {
+		} else if symbol.String() == string(mainAsset)+string(targetAsset) {
 			return &models.Order{
 				Symbol:     symbol,
 				BaseAsset:  mainAsset,

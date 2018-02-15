@@ -5,7 +5,7 @@
   branch = "master"
   name = "github.com/OopsMouse/go-binance"
   packages = ["."]
-  revision = "89512c6ebd6a24fda052307b1ad7c7dbe7be9c3d"
+  revision = "7282556f5445c19851d415ac21ba4a58ea051432"
 
 [[projects]]
   name = "github.com/go-kit/kit"

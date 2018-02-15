@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,7 +61,28 @@ func NewExchange(apikey string, secret string) Exchange {
 			continue
 		}
 		quoteAssetSet.Append(s.QuoteAsset)
-		symbols = append(symbols, models.Symbol(s.Symbol))
+		symbol := models.Symbol{
+			Text:           s.Symbol,
+			BaseAsset:      models.Asset(s.BaseAsset),
+			BasePrecision:  s.BaseAssetPrecision,
+			QuoteAsset:     models.Asset(s.QuoteAsset),
+			QuotePrecision: s.QuotePrecision,
+		}
+		for _, f := range s.Filters {
+			filterType := f["filterType"].(string)
+			if filterType == "PRICE_FILTER" {
+				symbol.MinPrice, _ = strconv.ParseFloat(f["minPrice"].(string), 64)
+				symbol.MaxPrice, _ = strconv.ParseFloat(f["maxPrice"].(string), 64)
+				symbol.TickSize, _ = strconv.ParseFloat(f["tickSize"].(string), 64)
+			} else if filterType == "LOT_SIZE" {
+				symbol.MinQty, _ = strconv.ParseFloat(f["minQty"].(string), 64)
+				symbol.MaxQty, _ = strconv.ParseFloat(f["maxQty"].(string), 64)
+				symbol.StepSize, _ = strconv.ParseFloat(f["stepSize"].(string), 64)
+			} else if filterType == "MIN_NOTIONAL" {
+				symbol.MinNotional, _ = strconv.ParseFloat(f["minNotional"].(string), 64)
+			}
+		}
+		symbols = append(symbols, symbol)
 	}
 
 	quoteAssetList := []models.Asset{}
@@ -126,7 +148,7 @@ func (ex Exchange) GetSymbols() []models.Symbol {
 }
 
 func (ex Exchange) SetDepth(symbol models.Symbol, depth *models.Depth) {
-	ex.DepthCache.Set(string(symbol), depth)
+	ex.DepthCache.Set(symbol.String(), depth)
 }
 
 func (ex Exchange) GetDepthList() ([]*models.Depth, error) {
@@ -139,11 +161,11 @@ func (ex Exchange) GetDepthList() ([]*models.Depth, error) {
 
 func GetQuoteAsset(symbol models.Symbol, quoteAssetList []models.Asset) (*models.Asset, error) {
 	for _, quoteAsset := range quoteAssetList {
-		if strings.HasSuffix(string(symbol), string(quoteAsset)) {
+		if strings.HasSuffix(symbol.String(), string(quoteAsset)) {
 			return &quoteAsset, nil
 		}
 	}
-	return nil, errors.New("not found quote asset: " + string(symbol))
+	return nil, errors.New("not found quote asset: " + symbol.String())
 }
 
 func GetDepthInOrderBook(symbol models.Symbol, orderBook *binance.OrderBook, quoteAssetList []models.Asset) (*models.Depth, error) {
@@ -151,7 +173,7 @@ func GetDepthInOrderBook(symbol models.Symbol, orderBook *binance.OrderBook, quo
 	if err != nil {
 		return nil, err
 	}
-	baseAsset := strings.Replace(string(symbol), string(*quoteAsset), "", 1)
+	baseAsset := strings.Replace(symbol.String(), string(*quoteAsset), "", 1)
 	bidPrice := orderBook.Bids[0].Price
 	bidQty := orderBook.Bids[0].Quantity
 	for i := 1; i < len(orderBook.Bids); i++ {
@@ -185,7 +207,7 @@ func (ex Exchange) OnUpdateDepthList(recv chan []*models.Depth) error {
 	for _, symbol := range ex.Symbols {
 		go func(symbol models.Symbol) {
 			request := binance.OrderBookRequest{
-				Symbol: string(symbol),
+				Symbol: symbol.String(),
 				Level:  20,
 			}
 
@@ -242,7 +264,7 @@ func (ex Exchange) SendOrder(order *models.Order) error {
 	var nor binance.NewOrderRequest
 	if order.OrderType == models.TypeLimit {
 		nor = binance.NewOrderRequest{
-			Symbol:      string(order.Symbol),
+			Symbol:      order.Symbol.String(),
 			Type:        binance.TypeLimit,
 			TimeInForce: binance.GTC,
 			Side:        side,
@@ -252,7 +274,7 @@ func (ex Exchange) SendOrder(order *models.Order) error {
 		}
 	} else {
 		nor = binance.NewOrderRequest{
-			Symbol:    string(order.Symbol),
+			Symbol:    order.Symbol.String(),
 			Type:      binance.TypeMarket,
 			Side:      side,
 			Quantity:  order.Qty,
@@ -277,7 +299,7 @@ func (ex Exchange) SendOrder(order *models.Order) error {
 	orderID := po.OrderID
 	for i := 0; i < ex.OrderRetry; i++ {
 		oor := binance.OpenOrdersRequest{
-			Symbol:     string(order.Symbol),
+			Symbol:     order.Symbol.String(),
 			RecvWindow: 5 * time.Second,
 			Timestamp:  time.Now(),
 		}
@@ -297,7 +319,7 @@ func (ex Exchange) SendOrder(order *models.Order) error {
 	}
 
 	cor := binance.CancelOrderRequest{
-		Symbol:     string(order.Symbol),
+		Symbol:     order.Symbol.String(),
 		OrderID:    orderID,
 		RecvWindow: 5 * time.Second,
 		Timestamp:  time.Now(),

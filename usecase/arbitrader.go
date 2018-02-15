@@ -73,7 +73,7 @@ func (arbit *Arbitrader) Trade(orderBook *models.OrderBook) error {
 	for i, o := range orderBook.Orders {
 		log.WithFields(log.Fields{
 			"number": i,
-			"symbol": string(o.Symbol),
+			"symbol": o.Symbol.String(),
 			"side":   o.Side,
 			"type":   o.OrderType,
 			"price":  o.Price,

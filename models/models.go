@@ -2,8 +2,6 @@ package models
 
 type Asset string
 
-type Symbol string
-
 type OrderSide string
 
 type OrderType string
@@ -20,6 +18,25 @@ const (
 	TypeLimit  = OrderType("LIMIT")
 	TypeMarket = OrderType("MARKET")
 )
+
+type Symbol struct {
+	Text           string
+	BaseAsset      Asset
+	BasePrecision  int
+	QuoteAsset     Asset
+	QuotePrecision int
+	MaxPrice       float64
+	MinPrice       float64
+	TickSize       float64
+	MaxQty         float64
+	MinQty         float64
+	StepSize       float64
+	MinNotional    float64
+}
+
+func (s Symbol) String() string {
+	return s.Text
+}
 
 type Order struct {
 	Symbol     Symbol
