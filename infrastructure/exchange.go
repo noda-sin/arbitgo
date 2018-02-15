@@ -2,11 +2,9 @@ package infrastructure
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	models "github.com/OopsMouse/arbitgo/models"
@@ -159,21 +157,9 @@ func (ex Exchange) GetDepthList() ([]*models.Depth, error) {
 	return depthList, nil
 }
 
-func GetQuoteAsset(symbol models.Symbol, quoteAssetList []models.Asset) (*models.Asset, error) {
-	for _, quoteAsset := range quoteAssetList {
-		if strings.HasSuffix(symbol.String(), string(quoteAsset)) {
-			return &quoteAsset, nil
-		}
-	}
-	return nil, errors.New("not found quote asset: " + symbol.String())
-}
-
 func GetDepthInOrderBook(symbol models.Symbol, orderBook *binance.OrderBook, quoteAssetList []models.Asset) (*models.Depth, error) {
-	quoteAsset, err := GetQuoteAsset(symbol, quoteAssetList)
-	if err != nil {
-		return nil, err
-	}
-	baseAsset := strings.Replace(symbol.String(), string(*quoteAsset), "", 1)
+	quoteAsset := symbol.QuoteAsset
+	baseAsset := symbol.BaseAsset
 	bidPrice := orderBook.Bids[0].Price
 	bidQty := orderBook.Bids[0].Quantity
 	for i := 1; i < len(orderBook.Bids); i++ {
@@ -195,7 +181,7 @@ func GetDepthInOrderBook(symbol models.Symbol, orderBook *binance.OrderBook, quo
 	return &models.Depth{
 		Symbol:     symbol,
 		BaseAsset:  models.Asset(baseAsset),
-		QuoteAsset: *quoteAsset,
+		QuoteAsset: quoteAsset,
 		BidPrice:   bidPrice,
 		AskPrice:   askPrice,
 		BidQty:     bidQty,
@@ -287,6 +273,7 @@ func (ex Exchange) SendOrder(order *models.Order) error {
 	if err != nil {
 		return err
 	}
+	return nil
 	var po *binance.ProcessedOrder
 	err = util.BackoffRetry(5, func() error {
 		p, err := ex.Api.NewOrder(nor)
