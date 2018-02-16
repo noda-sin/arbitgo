@@ -33,6 +33,8 @@ func (ma *MarketAnalyzer) GenerateBestOrderBook(depthList []*models.Depth, currB
 		if best == nil || orderBook.Score > best.Score {
 			best = orderBook
 			depth = d
+
+			log.Info("found a transaction with profit", best.Score)
 		}
 	}
 
@@ -132,7 +134,6 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 
 	currentAsset := mainAsset
 	minMainQty := 0.0 // MainAsset建で最小のQtyを計算
-	profit := 1.0
 
 	// 1回目の取引
 	depth1 := rotateDepth.DepthList[0]
@@ -147,14 +148,12 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 		// marketQty1 = depth1.AskQty
 		qty1 = depth1.AskPrice * depth1.AskQty
 		currentAsset = depth1.BaseAsset
-		profit = (1 - charge) * profit / depth1.AskPrice
 	} else {
 		side1 = models.SideSell
 		price1 = depth1.BidPrice
 		// marketQty1 = depth1.BidQty
 		qty1 = depth1.BidQty
 		currentAsset = depth1.QuoteAsset
-		profit = (1 - charge) * profit * depth1.BidPrice
 	}
 	minMainQty = qty1
 
@@ -175,7 +174,6 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 			qty2 = depth2.AskPrice * depth2.AskQty * (1.0 / price1)
 		}
 		currentAsset = depth2.BaseAsset
-		profit = (1 - charge) * profit / depth2.AskPrice
 	} else {
 		side2 = models.SideSell
 		price2 = depth2.BidPrice
@@ -187,7 +185,6 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 			return nil
 		}
 		currentAsset = depth2.QuoteAsset
-		profit = (1 - charge) * profit * depth2.BidPrice
 	}
 
 	if qty2 < minMainQty {
@@ -206,13 +203,11 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 		price3 = depth3.AskPrice
 		// marketQty3 = depth3.AskQty
 		qty3 = depth3.AskQty * (1.0 / depth3.AskPrice)
-		profit = (1 - charge) * profit / depth3.AskPrice
 	} else {
 		side3 = models.SideSell
 		price3 = depth3.BidPrice
 		// marketQty3 = depth3.BidQty
 		qty3 = depth3.BidQty * depth3.BidPrice
-		profit = (1 - charge) * profit * depth3.BidPrice
 	}
 
 	if qty3 < minMainQty {
@@ -235,6 +230,8 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 	}
 
 	beginMainQty := minMainQty
+	// チャージ計算
+	minMainQty = (1 - charge) * minMainQty
 
 	if side1 == models.SideBuy {
 		qty1 = util.Floor(minMainQty/price1, symbol1.StepSize)
@@ -252,6 +249,9 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 		log.Debug("Symbol1 price is not within the limit range")
 		return nil
 	}
+
+	// チャージ計算
+	qty1 = (1 - charge) * qty1
 
 	if side2 == models.SideBuy {
 		if side1 == models.SideBuy {
@@ -277,6 +277,9 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 		log.Debug("Symbol2 price is not within the limit range")
 		return nil
 	}
+
+	// チャージ計算
+	qty2 = (1 - charge) * qty2
 
 	if side3 == models.SideBuy {
 		if side2 == models.SideBuy {
