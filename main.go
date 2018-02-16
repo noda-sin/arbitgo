@@ -43,8 +43,9 @@ func main() {
 		},
 		cli.StringFlag{
 			Name:        "asset, as",
-			Usage:       "start asset",
+			Usage:       "main asset",
 			Destination: &assetString,
+			Value:       "BTC",
 		},
 		cli.Float64Flag{
 			Name:        "maxqty, m",
@@ -63,13 +64,7 @@ func main() {
 			return cli.NewExitError("api key and secret is required", 0)
 		}
 
-		var mainAsset models.Asset
-		if assetString == "" {
-			mainAsset = models.AssetBTC
-		} else {
-			mainAsset = models.Asset(assetString)
-		}
-
+		mainAsset := models.Asset(assetString)
 		exchange := CreateExchange(apiKey, secret, mainAsset, dryrun)
 		analyzer := CreateAnalyzer(mainAsset, exchange.GetCharge(), maxqty, threshold)
 		arbitrader := CreateTrader(exchange, analyzer, mainAsset)
