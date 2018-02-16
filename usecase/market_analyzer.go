@@ -3,6 +3,7 @@ package usecase
 import (
 	models "github.com/OopsMouse/arbitgo/models"
 	"github.com/OopsMouse/arbitgo/util"
+	log "github.com/sirupsen/logrus"
 )
 
 type MarketAnalyzer struct {
@@ -23,6 +24,7 @@ func NewMarketAnalyzer(mainAsset models.Asset, charge float64, maxqty float64, t
 
 func (ma *MarketAnalyzer) GenerateBestOrderBook(depthList []*models.Depth, currBalance float64) *models.OrderBook {
 	var best *models.OrderBook
+	var depth *models.RotationDepth
 	for _, d := range GenerateRotationDepthList(ma.MainAsset, depthList) {
 		orderBook := GenerateOrderBook(ma.MainAsset, d, currBalance, ma.MaxQty, ma.Charge)
 		if orderBook == nil {
@@ -30,11 +32,25 @@ func (ma *MarketAnalyzer) GenerateBestOrderBook(depthList []*models.Depth, currB
 		}
 		if best == nil || orderBook.Score > best.Score {
 			best = orderBook
+			depth = d
 		}
 	}
 
 	if best == nil || best.Score <= ma.Threshold {
 		return nil
+	}
+
+	for _, d := range depth.DepthList {
+		log.WithFields(log.Fields{
+			"Symbol":      d.Symbol,
+			"BidPrice":    d.BidPrice,
+			"BidQty":      d.BidQty,
+			"AskPrice":    d.AskPrice,
+			"AskQty":      d.AskQty,
+			"MaxQty":      d.Symbol.MaxQty,
+			"MinQty":      d.Symbol.MinQty,
+			"MinNotional": d.Symbol.MinNotional,
+		}).Info("best order depth")
 	}
 
 	return best
@@ -109,13 +125,13 @@ func GenerateRotationDepthList(mainAsset models.Asset, depthList []*models.Depth
 	return rotateDepthList
 }
 
-func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth, currentBalance float64, maxqty float64, charge float64) *models.OrderBook {
+func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth, currentBalance float64, maxLimitQty float64, charge float64) *models.OrderBook {
 	if rotateDepth == nil || len(rotateDepth.DepthList) == 0 {
 		return nil
 	}
 
 	currentAsset := mainAsset
-	minQty := 0.0
+	minMainQty := 0.0 // MainAsset建で最小のQtyを計算
 	profit := 1.0
 
 	// 1回目の取引
@@ -140,7 +156,7 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 		currentAsset = depth1.QuoteAsset
 		profit = (1 - charge) * profit * depth1.BidPrice
 	}
-	minQty = qty1
+	minMainQty = qty1
 
 	// 2回目の取引
 	depth2 := rotateDepth.DepthList[1]
@@ -174,8 +190,8 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 		profit = (1 - charge) * profit * depth2.BidPrice
 	}
 
-	if qty2 < minQty {
-		minQty = qty2
+	if qty2 < minMainQty {
+		minMainQty = qty2
 	}
 
 	// 3回目の取引
@@ -199,59 +215,112 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 		profit = (1 - charge) * profit * depth3.BidPrice
 	}
 
-	if qty3 < minQty {
-		minQty = qty3
+	if qty3 < minMainQty {
+		minMainQty = qty3
 	}
 
-	if currentBalance < minQty {
-		minQty = currentBalance
+	// お財布内のMainAsset量の方が少ない場合は、お財布内全部を利用値とする
+	if currentBalance < minMainQty {
+		minMainQty = currentBalance
 	}
 
-	if maxqty != 0 && maxqty < minQty {
-		minQty = maxqty
+	// 利用制限上限に触れている場合は、制限値を利用値とする
+	if maxLimitQty != 0 && maxLimitQty < minMainQty {
+		minMainQty = maxLimitQty
 	}
 
-	score := (profit - 1.0)
+	if symbol1.MinNotional > minMainQty {
+		log.Debug("Qty is less than min notional")
+		return nil
+	}
 
-	// var qqty1 float64
+	beginMainQty := minMainQty
+
 	if side1 == models.SideBuy {
-		qty1 = minQty / price1
+		qty1 = util.Floor(minMainQty/price1, symbol1.StepSize)
 	} else {
-		qty1 = minQty
+		qty1 = util.Floor(minMainQty, symbol1.StepSize)
 	}
-	// qqty1 = minQty
 
-	// var qqty2 float64
+	// 制限チェック
+	if symbol1.MaxQty < qty1 || symbol1.MinQty > qty1 || symbol2.MinNotional > qty1 {
+		log.Debug("Symbol1 qty is not within the limit range")
+		return nil
+	}
+
+	if symbol1.MaxPrice < price1 || symbol1.MinPrice > price1 {
+		log.Debug("Symbol1 price is not within the limit range")
+		return nil
+	}
+
 	if side2 == models.SideBuy {
 		if side1 == models.SideBuy {
-			qty2 = qty1 / price2
+			qty2 = util.Floor(qty1/price2, symbol2.StepSize)
 		} else {
-			qty2 = (qty1 * price1) / price2
+			qty2 = util.Floor((qty1*price1)/price2, symbol2.StepSize)
 		}
 	} else {
 		if side1 == models.SideBuy {
-			qty2 = qty1
+			qty2 = util.Floor(qty1, symbol2.StepSize)
 		} else {
-			qty2 = qty1 * price1
+			qty2 = util.Floor(qty1*price1, symbol2.StepSize)
 		}
 	}
-	// qqty2 = qqty1
 
-	// var qqty3 float64
+	// 制限チェック
+	if symbol2.MaxQty < qty2 || symbol2.MinQty > qty2 || symbol3.MinNotional > qty2 {
+		log.Debug("Symbol2 qty is not within the limit range")
+		return nil
+	}
+
+	if symbol2.MaxPrice < price2 || symbol2.MinPrice > price2 {
+		log.Debug("Symbol2 price is not within the limit range")
+		return nil
+	}
+
 	if side3 == models.SideBuy {
 		if side2 == models.SideBuy {
-			qty3 = qty2 / price3
+			qty3 = util.Floor(qty2/price3, symbol3.StepSize)
 		} else {
-			qty3 = (qty2 * price2) / price3
+			qty3 = util.Floor((qty2*price2)/price3, symbol3.StepSize)
 		}
 	} else {
 		if side2 == models.SideBuy {
-			qty3 = qty2
+			qty3 = util.Floor(qty2, symbol3.StepSize)
 		} else {
-			qty3 = qty2 * price2
+			qty3 = util.Floor(qty2*price2, symbol3.StepSize)
 		}
 	}
-	// qqty3 = qqty2
+
+	// 制限チェック
+	if symbol3.MaxQty < qty3 || symbol3.MinQty > qty3 {
+		log.Debug("Symbol3 qty is not within the limit range")
+		return nil
+	}
+
+	if symbol3.MaxPrice < price3 || symbol3.MinPrice > price3 {
+		log.Debug("Symbol3 price is not within the limit range")
+		return nil
+	}
+
+	var endMainQty float64
+	if side3 == models.SideBuy {
+		endMainQty = qty3
+	} else {
+		endMainQty = qty3 * price3
+	}
+
+	score := (endMainQty - beginMainQty) / beginMainQty
+
+	// 制限チェック
+	if score < 0 {
+		log.Debug("Score is less than 0")
+		return nil
+	}
+
+	qty1 = util.Floor(qty1, symbol1.StepSize)
+	qty2 = util.Floor(qty2, symbol2.StepSize)
+	qty3 = util.Floor(qty3, symbol3.StepSize)
 
 	orders := []*models.Order{}
 	orders = append(orders, &models.Order{
@@ -285,8 +354,9 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 	})
 
 	return &models.OrderBook{
-		Score:  score,
-		Orders: orders,
+		WillBeQty: endMainQty,
+		Score:     score,
+		Orders:    orders,
 	}
 }
 

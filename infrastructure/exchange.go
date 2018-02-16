@@ -240,6 +240,10 @@ func (ex Exchange) OnUpdateDepthList(recv chan []*models.Depth) error {
 	return nil
 }
 
+func (ex Exchange) SendOrderTest(order *models.Order) error {
+	return nil
+}
+
 func (ex Exchange) SendOrder(order *models.Order) error {
 	var side binance.OrderSide
 	if order.Side == models.SideBuy {
@@ -273,7 +277,6 @@ func (ex Exchange) SendOrder(order *models.Order) error {
 	if err != nil {
 		return err
 	}
-	return nil
 	var po *binance.ProcessedOrder
 	err = util.BackoffRetry(5, func() error {
 		p, err := ex.Api.NewOrder(nor)

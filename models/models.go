@@ -49,8 +49,9 @@ type Order struct {
 }
 
 type OrderBook struct {
-	Score  float64
-	Orders []*Order
+	WillBeQty float64
+	Score     float64
+	Orders    []*Order
 }
 
 type Depth struct {

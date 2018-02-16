@@ -39,7 +39,7 @@ func main() {
 			Name:        "secret, s",
 			Usage:       "secret of exchange",
 			Destination: &secret,
-			EnvVar:      "EXCAHNGE_SECRET",
+			EnvVar:      "EXCHANGE_SECRET",
 		},
 		cli.StringFlag{
 			Name:        "asset, as",

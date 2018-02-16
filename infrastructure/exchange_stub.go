@@ -88,6 +88,7 @@ func (ex ExchangeStub) SendOrder(order *models.Order) error {
 		if balance.Free < order.Qty*order.Price {
 			return fmt.Errorf("Insufficent balance: %s, %f, %f\n", balance.Asset, balance.Free, order.Qty*order.Price)
 		}
+		ex.Exchange.SendOrderTest(order)
 		ex.SubBalance(order.QuoteAsset, order.Qty*order.Price)
 		ex.AddBalance(order.BaseAsset, order.Qty)
 	} else {
@@ -98,6 +99,7 @@ func (ex ExchangeStub) SendOrder(order *models.Order) error {
 		if balance.Free < order.Qty {
 			return fmt.Errorf("Insufficent balance: %s, %f, %f\n", balance.Asset, balance.Free, order.Qty)
 		}
+		ex.Exchange.SendOrderTest(order)
 		ex.AddBalance(order.QuoteAsset, order.Qty*order.Price)
 		ex.SubBalance(order.BaseAsset, order.Qty)
 	}

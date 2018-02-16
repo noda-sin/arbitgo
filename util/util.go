@@ -108,3 +108,7 @@ func BackoffRetry(retry int, op Operation) error {
 	}
 	return err
 }
+
+func Floor(a float64, b float64) float64 {
+	return float64(int(a/b)) * b
+}
