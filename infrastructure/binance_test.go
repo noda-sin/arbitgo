@@ -8,7 +8,7 @@ import (
 )
 
 func TestOrder(t *testing.T) {
-	ex := NewExchange(os.Getenv("EXCHANGE_APIKEY"), os.Getenv("EXCAHNGE_SECRET"))
+	ex := NewBinance(os.Getenv("EXCHANGE_APIKEY"), os.Getenv("EXCAHNGE_SECRET"))
 	order := &models.Order{
 		Symbol:    models.Symbol{Text: "ETHBTC"},
 		OrderType: models.TypeLimit,

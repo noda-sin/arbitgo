@@ -52,7 +52,7 @@ func (ma *MarketAnalyzer) GenerateBestOrderBook(depthList []*models.Depth, currB
 			"MaxQty":      d.Symbol.MaxQty,
 			"MinQty":      d.Symbol.MinQty,
 			"MinNotional": d.Symbol.MinNotional,
-		}).Info("best order depth")
+		}).Debug("best order depth")
 	}
 
 	return best

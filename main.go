@@ -81,6 +81,11 @@ func main() {
 }
 
 func CreateExchange(apikey string, secret string, mainAsset models.Asset, dryRun bool) usecase.Exchange {
+	binance := infrastructure.NewBinance(
+		apikey,
+		secret,
+	)
+
 	if dryRun {
 		balances := map[models.Asset]*models.Balance{}
 		balances[mainAsset] = &models.Balance{
@@ -89,16 +94,12 @@ func CreateExchange(apikey string, secret string, mainAsset models.Asset, dryRun
 			Total: 0.12,
 		}
 		return infrastructure.NewExchangeStub(
-			apikey,
-			secret,
+			binance,
 			balances,
 		)
 	}
 
-	return infrastructure.NewExchange(
-		apikey,
-		secret,
-	)
+	return binance
 }
 
 func CreateAnalyzer(mainAsset models.Asset, charge float64, maxqty float64, threshold float64) usecase.MarketAnalyzer {

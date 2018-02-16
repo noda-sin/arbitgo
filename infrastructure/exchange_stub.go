@@ -11,8 +11,7 @@ type ExchangeStub struct {
 	Balances map[models.Asset]*models.Balance
 }
 
-func NewExchangeStub(apikey string, secret string, initialBalances map[models.Asset]*models.Balance) ExchangeStub {
-	ex := NewExchange(apikey, secret)
+func NewExchangeStub(ex Exchange, initialBalances map[models.Asset]*models.Balance) ExchangeStub {
 	return ExchangeStub{
 		Exchange: ex,
 		Balances: initialBalances,
@@ -88,7 +87,6 @@ func (ex ExchangeStub) SendOrder(order *models.Order) error {
 		if balance.Free < order.Qty*order.Price {
 			return fmt.Errorf("Insufficent balance: %s, %f, %f\n", balance.Asset, balance.Free, order.Qty*order.Price)
 		}
-		ex.Exchange.SendOrderTest(order)
 		ex.SubBalance(order.QuoteAsset, order.Qty*order.Price)
 		ex.AddBalance(order.BaseAsset, order.Qty)
 	} else {
@@ -99,7 +97,6 @@ func (ex ExchangeStub) SendOrder(order *models.Order) error {
 		if balance.Free < order.Qty {
 			return fmt.Errorf("Insufficent balance: %s, %f, %f\n", balance.Asset, balance.Free, order.Qty)
 		}
-		ex.Exchange.SendOrderTest(order)
 		ex.AddBalance(order.QuoteAsset, order.Qty*order.Price)
 		ex.SubBalance(order.BaseAsset, order.Qty)
 	}
