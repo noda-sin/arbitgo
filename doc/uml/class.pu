@@ -2,100 +2,82 @@
 
 ' Model
 
-class Order {
-    OrderID int64
-    Amount float64
-    Price float64
+Class Order {
+	Symbol     Symbol
+	BaseAsset  Asset
+	QuoteAsset Asset
+	OrderType  OrderType
+	Price      float64
+	Side       OrderSide
+	Qty        float64
 }
 
-class Ticker {
-    Symbol string
-    Bid float64
-    BidSize float64
-    Ask float64
-    AskSize float64
+Class Depth {
+	BaseAsset  Asset
+	QuoteAsset Asset
+	Symbol     Symbol
+	BidPrice   float64
+	AskPrice   float64
+	BidQty     float64
+	AskQty     float64
 }
 
-class Balance {
-    Symbol string
-    Size float64
+Class Balance {
+	Asset Asset
+	Free  float64
+	Total float64
 }
 
 class Binance {
 }
 
+class ExchangeStub {
+
+}
+
 interface Exchange {
-    BaseURL
-    Key
-    Secret
-    +BuyOrder(order Order) error
-    +SellOrder(order Order) error
-    +CancelOrder(order Order) error
-    +UpdatedTikcer(cb chan Ticker) error
-    +GetBalances() Balance error
+	GetCharge() float64
+	GetBalance(asset models.Asset) (*models.Balance, error)
+	GetBalances() ([]*models.Balance, error)
+	GetSymbols() []models.Symbol
+	GetDepthList() ([]*models.Depth, error)
+	OnUpdateDepthList(recv chan []*models.Depth) error
+	SendOrder(order *models.Order) error
 }
 
-Exchange <|-- Binance
-Order <-- Exchange
-Ticker <-- Exchange
 Balance <-- Exchange
-
-' Repository
-
-class TickerRepository {
-    Exchange
-    +GetTicker(symbol string) Ticker, error
-    +GetTickers() []Ticker, error
-    +UpdatedTikcer(cb chan Ticker) error
-}
-
-Exchange <-- TickerRepository
-
-class BalanceRepository {
-    Exchange
-    +GetBalance(symbol string) Balance, error
-    +GetBalances() []Balance, error
-}
-
-Exchange <-- BalanceRepository
-
-class TradeRepository {
-    Exchange
-    +BuyOrder(order Order) error
-    +SellOrder(order Order) error
-    +CancelOrder(order Order) error
-    +UpdatedTikcer(cb chan Ticker) error
-}
-
-Exchange <-- TradeRepository
+Depth <-- Exchange
+Order <-- Exchange
+Exchange <-- Binance
+Exchange <-- ExchangeStub
 
 ' Usecase
 
-class TradeRoute {
-    Symbol string
+Class MarketAnalyzer {
+	MainAsset Asset
+	Charge    float64
+	MaxQty    float64
+	Threshold float64
+    GenerateBestOrderBook() *models.OrderBook
+    GenerateRecoveryOrderBook() *models.OrderBook
 }
 
-class AnalyzeUsecase {
-    TickerRepository
-    BalanceRepository
-    TradeUsecase
+Class Arbitrader {
+	Exchange Exchange
+	MarketAnalyzer MarketAnalyzer
+	MainAsset Asset
+    Run()
+    Trade()
+    Recovery()
 }
 
-TickerRepository <-- AnalyzeUsecase
-BalanceRepository <-- AnalyzeUsecase
-
-class TradeUsecase {
-    TradeRepository
-    +Trade(routes []TradeRoute) error
-}
-
-TradeUsecase <-- AnalyzeUsecase
-TradeRepository <-- TradeUsecase
+MarketAnalyzer <-- Arbitrader
+Binance <-- Arbitrader
+ExchangeStub <-- Arbitrader
 
 class main {
 }
 
-AnalyzeUsecase <-- main
-TradeUsecase <-- main
+Arbitrader <-- main
 
 @enduml

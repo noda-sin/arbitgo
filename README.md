@@ -70,9 +70,3 @@ http://postd.cc/golang-clean-archithecture/
 ![](doc/uml/base_seq.png)
 
 [Link](doc/ml/base_seq.pu)
-
-#### 取引シーケンス
-
-![](doc/uml/trade_seq.png)
-
-[Link](doc/uml/trade_seq.pu)

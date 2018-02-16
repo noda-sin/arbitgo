@@ -1,16 +1,12 @@
 @startuml
 actor Exchange
-Exchange -> TickerRepository : 価格の変動を通知
-TickerRepository -> AnalyzeUsecase : 最新の価格表
-AnalyzeUsecase -> BalanceRepository : お財布状態
-AnalyzeUsecase -> AnalyzeUsecase : 取引可能ルートを探索
-alt 取引可能ルートがない
-    AnalyzeUsecase -> AnalyzeUsecase : 終了
-    destroy AnalyzeUsecase
-else 取引可能ルートがある
-    AnalyzeUsecase -> TradeUsecase : 最適ルート
-end
-loop ルート巡回完了まで
-    TradeUsecase -> TradeRepository : 取引
+Exchange -> Arbitrader : 価格の変動を通知
+Arbitrader -> MarketAnalyzer : 利益見込みのある取引ペアを検索
+Arbitrader <-- MarketAnalyzer : 取引ペア
+alt 利益見込みのある取引ペアなし
+    Arbitrader -> Arbitrader : 終了
+    destroy Arbitrader
+else 利益見込みのある取引ペアあり
+    Arbitrader -> Exchange : 取引
 end
 @enduml
