@@ -190,6 +190,13 @@ func GetDepthInOrderBook(symbol models.Symbol, orderBook *binance.OrderBook, quo
 }
 
 func (bi Binance) OnUpdateDepthList(recv chan []*models.Depth) error {
+	defer func() {
+		if err := recover(); err != nil {
+			fmt.Println("recover error and retry to exec func", err)
+			bi.OnUpdateDepthList(recv)
+		}
+	}()
+
 	for _, symbol := range bi.Symbols {
 		go func(symbol models.Symbol) {
 			request := binance.OrderBookRequest{
