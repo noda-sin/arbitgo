@@ -32,10 +32,25 @@ type Symbol struct {
 	MinQty         float64
 	StepSize       float64
 	MinNotional    float64
+	Volume         float64
 }
 
 func (s Symbol) String() string {
 	return s.Text
+}
+
+type Symbols []Symbol
+
+func (symbs Symbols) Len() int {
+	return len(symbs)
+}
+
+func (symbs Symbols) Less(i, j int) bool {
+	return symbs[i].Volume > symbs[j].Volume
+}
+
+func (symbs Symbols) Swap(i, j int) {
+	symbs[i], symbs[j] = symbs[j], symbs[i]
 }
 
 type Order struct {

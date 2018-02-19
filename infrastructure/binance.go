@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"time"
 
@@ -83,6 +84,41 @@ func NewBinance(apikey string, secret string) Binance {
 		symbols = append(symbols, symbol)
 	}
 
+	chans := []chan *models.Symbol{}
+	for _, s := range symbols {
+		ch := make(chan *models.Symbol)
+		go func(s models.Symbol) {
+			err := util.BackoffRetry(5, func() error {
+				tkr := binance.TickerRequest{
+					Symbol: s.Text,
+				}
+				tk24, err := b.Ticker24(tkr)
+				if tk24 != nil {
+					s.Volume = tk24.Volume
+				}
+				return err
+			})
+
+			if err != nil {
+				panic(err)
+			}
+
+			ch <- &s
+		}(s)
+		chans = append(chans, ch)
+	}
+
+	symbols = []models.Symbol{}
+	for _, ch := range chans {
+		symbol := <-ch
+		symbols = append(symbols, *symbol)
+	}
+
+	symbols = FilterByTopVolume(symbols, 30)
+
+	for _, v := range symbols {
+		fmt.Println(v.Text, v.Volume)
+	}
 	quoteAssetList := []models.Asset{}
 	for _, s := range quoteAssetSet.ToSlice() {
 		quoteAssetList = append(quoteAssetList, models.Asset(s))
@@ -96,6 +132,32 @@ func NewBinance(apikey string, secret string) Binance {
 		OrderRetry:     10,
 	}
 	return ex
+}
+
+func FilterByTopVolume(symbols []models.Symbol, top int) []models.Symbol {
+	quoteAssetList := util.NewSet()
+	symbolsByQuote := map[models.Asset][]models.Symbol{}
+	for _, s := range symbols {
+		quoteAssetList.Append(string(s.QuoteAsset))
+		symbolsByQuote[s.QuoteAsset] = append(symbolsByQuote[s.QuoteAsset], s)
+	}
+
+	filteredAssetList := util.NewSet()
+	for _, v := range symbolsByQuote {
+		sort.Sort(models.Symbols(v))
+		for i := 0; i < len(v) && i < top; i++ {
+			filteredAssetList.Append(string(v[i].BaseAsset))
+		}
+	}
+
+	filteredSymbols := []models.Symbol{}
+	for _, s := range symbols {
+		if quoteAssetList.Include(string(s.BaseAsset)) ||
+			filteredAssetList.Include(string(s.BaseAsset)) {
+			filteredSymbols = append(filteredSymbols, s)
+		}
+	}
+	return filteredSymbols
 }
 
 func (bi Binance) GetCharge() float64 {
