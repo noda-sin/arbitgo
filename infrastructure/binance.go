@@ -13,6 +13,7 @@ import (
 	binance "github.com/OopsMouse/go-binance"
 	"github.com/go-kit/kit/log"
 	"github.com/orcaman/concurrent-map"
+	"github.com/pkg/errors"
 )
 
 type Binance struct {
@@ -217,6 +218,11 @@ func (bi Binance) GetDepthList() ([]*models.Depth, error) {
 }
 
 func GetDepthInOrderBook(symbol models.Symbol, orderBook *binance.OrderBook, quoteAssetList []models.Asset) (*models.Depth, error) {
+	if len(orderBook.Bids) < 1 ||
+		len(orderBook.Asks) < 1 {
+		return nil, errors.Errorf("Bids or Asks length is empty")
+	}
+
 	quoteAsset := symbol.QuoteAsset
 	baseAsset := symbol.BaseAsset
 	bidPrice := orderBook.Bids[0].Price
