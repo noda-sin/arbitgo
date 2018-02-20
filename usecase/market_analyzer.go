@@ -3,6 +3,8 @@ package usecase
 import (
 	models "github.com/OopsMouse/arbitgo/models"
 	"github.com/OopsMouse/arbitgo/util"
+	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -22,7 +24,7 @@ func NewMarketAnalyzer(mainAsset models.Asset, charge float64, maxqty float64, t
 	}
 }
 
-func (ma *MarketAnalyzer) GenerateBestOrderBook(depthList []*models.Depth, currBalance float64) *models.OrderBook {
+func (ma *MarketAnalyzer) ArbitrageOrders(depthList []*models.Depth, currBalance float64) []*models.Order {
 	var best *models.OrderBook
 	var depth *models.RotationDepth
 	for _, d := range GenerateRotationDepthList(ma.MainAsset, depthList) {
@@ -33,8 +35,6 @@ func (ma *MarketAnalyzer) GenerateBestOrderBook(depthList []*models.Depth, currB
 		if best == nil || orderBook.Score > best.Score {
 			best = orderBook
 			depth = d
-
-			log.Info("found a transaction with profit", best.Score)
 		}
 	}
 
@@ -55,7 +55,7 @@ func (ma *MarketAnalyzer) GenerateBestOrderBook(depthList []*models.Depth, currB
 		}).Debug("best order depth")
 	}
 
-	return best
+	return best.Orders
 }
 
 func GenerateRotationDepthList(mainAsset models.Asset, depthList []*models.Depth) []*models.RotationDepth {
@@ -323,33 +323,36 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 
 	orders := []*models.Order{}
 	orders = append(orders, &models.Order{
-		Symbol:     symbol1,
-		QuoteAsset: depth1.QuoteAsset,
-		BaseAsset:  depth1.BaseAsset,
-		OrderType:  models.TypeLimit,
-		Price:      price1,
-		Side:       side1,
-		Qty:        qty1,
+		Symbol:        symbol1,
+		QuoteAsset:    depth1.QuoteAsset,
+		BaseAsset:     depth1.BaseAsset,
+		OrderType:     models.TypeLimit,
+		Price:         price1,
+		Side:          side1,
+		Qty:           qty1,
+		ClientOrderID: uuid.New().String(),
 	})
 
 	orders = append(orders, &models.Order{
-		Symbol:     symbol2,
-		QuoteAsset: depth2.QuoteAsset,
-		BaseAsset:  depth2.BaseAsset,
-		OrderType:  models.TypeLimit,
-		Price:      price2,
-		Side:       side2,
-		Qty:        qty2,
+		Symbol:        symbol2,
+		QuoteAsset:    depth2.QuoteAsset,
+		BaseAsset:     depth2.BaseAsset,
+		OrderType:     models.TypeLimit,
+		Price:         price2,
+		Side:          side2,
+		Qty:           qty2,
+		ClientOrderID: uuid.New().String(),
 	})
 
 	orders = append(orders, &models.Order{
-		Symbol:     symbol3,
-		QuoteAsset: depth3.QuoteAsset,
-		BaseAsset:  depth3.BaseAsset,
-		OrderType:  models.TypeLimit,
-		Price:      price3,
-		Side:       side3,
-		Qty:        qty3,
+		Symbol:        symbol3,
+		QuoteAsset:    depth3.QuoteAsset,
+		BaseAsset:     depth3.BaseAsset,
+		OrderType:     models.TypeLimit,
+		Price:         price3,
+		Side:          side3,
+		Qty:           qty3,
+		ClientOrderID: uuid.New().String(),
 	})
 
 	return &models.OrderBook{
@@ -359,44 +362,101 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 	}
 }
 
-func (ma *MarketAnalyzer) GenerateRecoveryOrderBook(mainAsset models.Asset, symbols []models.Symbol, balances []*models.Balance) *models.OrderBook {
+func (ma *MarketAnalyzer) ForceChangeOrders(symbols []models.Symbol, from models.Asset, to models.Asset) ([]*models.Order, error) {
 	orders := []*models.Order{}
-	for _, balance := range balances {
-		if balance.Asset == mainAsset {
-			continue
-		}
-		order := GenerateRecoveryOrder(mainAsset, symbols, balance)
-		if order != nil {
-			orders = append(orders, order)
-		}
-	}
-	return &models.OrderBook{
-		Orders: orders,
-	}
-}
 
-func GenerateRecoveryOrder(mainAsset models.Asset, symbols []models.Symbol, balance *models.Balance) *models.Order {
-	targetAsset := balance.Asset
-	for _, symbol := range symbols {
-		if symbol.String() == string(targetAsset)+string(mainAsset) {
-			return &models.Order{
-				Symbol:     symbol,
-				BaseAsset:  targetAsset,
-				QuoteAsset: mainAsset,
-				OrderType:  models.TypeMarket,
-				Side:       models.SideSell,
-				Qty:        balance.Free,
-			}
-		} else if symbol.String() == string(mainAsset)+string(targetAsset) {
-			return &models.Order{
-				Symbol:     symbol,
-				BaseAsset:  mainAsset,
-				QuoteAsset: targetAsset,
-				OrderType:  models.TypeMarket,
-				Side:       models.SideBuy,
-				Qty:        balance.Free,
+	// 直接的に変える手段を検索
+	for _, s := range symbols {
+		if s.QuoteAsset == from && s.BaseAsset == to {
+			orders = append(orders, &models.Order{
+				Symbol:        s,
+				OrderType:     models.TypeMarket,
+				Side:          models.SideBuy,
+				ClientOrderID: uuid.New().String(),
+			})
+			return orders, nil
+		} else if s.QuoteAsset == to && s.BaseAsset == from {
+			orders = append(orders, &models.Order{
+				Symbol:        s,
+				OrderType:     models.TypeMarket,
+				Side:          models.SideSell,
+				ClientOrderID: uuid.New().String(),
+			})
+			return orders, nil
+		}
+	}
+
+	// 関節的に変える手段を検索
+	symbolsRelatedFrom := []models.Symbol{}
+	symbolsRelatedTo := []models.Symbol{}
+	for _, s := range symbols {
+		if s.QuoteAsset == from || s.BaseAsset == from {
+			symbolsRelatedFrom = append(symbolsRelatedFrom, s)
+		} else if s.QuoteAsset == to || s.BaseAsset == to {
+			symbolsRelatedTo = append(symbolsRelatedTo, s)
+		}
+	}
+
+	for _, i := range symbolsRelatedFrom {
+		for _, j := range symbolsRelatedTo {
+			if i.QuoteAsset == from && i.BaseAsset == j.BaseAsset {
+				orders = append(orders, &models.Order{
+					Symbol:        i,
+					OrderType:     models.TypeMarket,
+					Side:          models.SideBuy,
+					ClientOrderID: uuid.New().String(),
+				})
+				orders = append(orders, &models.Order{
+					Symbol:        j,
+					OrderType:     models.TypeMarket,
+					Side:          models.SideSell,
+					ClientOrderID: uuid.New().String(),
+				})
+				return orders, nil
+			} else if i.QuoteAsset == from && i.BaseAsset == j.QuoteAsset {
+				orders = append(orders, &models.Order{
+					Symbol:        i,
+					OrderType:     models.TypeMarket,
+					Side:          models.SideBuy,
+					ClientOrderID: uuid.New().String(),
+				})
+				orders = append(orders, &models.Order{
+					Symbol:        j,
+					OrderType:     models.TypeMarket,
+					Side:          models.SideBuy,
+					ClientOrderID: uuid.New().String(),
+				})
+				return orders, nil
+			} else if i.BaseAsset == from && i.QuoteAsset == j.BaseAsset {
+				orders = append(orders, &models.Order{
+					Symbol:        i,
+					OrderType:     models.TypeMarket,
+					Side:          models.SideSell,
+					ClientOrderID: uuid.New().String(),
+				})
+				orders = append(orders, &models.Order{
+					Symbol:        j,
+					OrderType:     models.TypeMarket,
+					Side:          models.SideSell,
+					ClientOrderID: uuid.New().String(),
+				})
+				return orders, nil
+			} else if i.BaseAsset == from && i.QuoteAsset == j.QuoteAsset {
+				orders = append(orders, &models.Order{
+					Symbol:        i,
+					OrderType:     models.TypeMarket,
+					Side:          models.SideSell,
+					ClientOrderID: uuid.New().String(),
+				})
+				orders = append(orders, &models.Order{
+					Symbol:        j,
+					OrderType:     models.TypeMarket,
+					Side:          models.SideBuy,
+					ClientOrderID: uuid.New().String(),
+				})
+				return orders, nil
 			}
 		}
 	}
-	return nil
+	return nil, errors.Errorf("Not found orders to force change")
 }

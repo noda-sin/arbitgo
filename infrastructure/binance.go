@@ -316,21 +316,23 @@ func (bi Binance) SendOrder(order *models.Order) error {
 	var nor binance.NewOrderRequest
 	if order.OrderType == models.TypeLimit {
 		nor = binance.NewOrderRequest{
-			Symbol:      order.Symbol.String(),
-			Type:        binance.TypeLimit,
-			TimeInForce: binance.GTC,
-			Side:        side,
-			Quantity:    order.Qty,
-			Price:       order.Price,
-			Timestamp:   time.Now(),
+			Symbol:           order.Symbol.String(),
+			Type:             binance.TypeLimit,
+			TimeInForce:      binance.GTC,
+			Side:             side,
+			Quantity:         order.Qty,
+			Price:            order.Price,
+			NewClientOrderID: order.ClientOrderID,
+			Timestamp:        time.Now(),
 		}
 	} else {
 		nor = binance.NewOrderRequest{
-			Symbol:    order.Symbol.String(),
-			Type:      binance.TypeMarket,
-			Side:      side,
-			Quantity:  order.Qty,
-			Timestamp: time.Now(),
+			Symbol:           order.Symbol.String(),
+			Type:             binance.TypeMarket,
+			Side:             side,
+			Quantity:         order.Qty,
+			NewClientOrderID: order.ClientOrderID,
+			Timestamp:        time.Now(),
 		}
 	}
 	err := util.BackoffRetry(5, func() error {
@@ -348,35 +350,38 @@ func (bi Binance) SendOrder(order *models.Order) error {
 	if err != nil {
 		return err
 	}
-	orderID := po.OrderID
-	for i := 0; i < bi.OrderRetry; i++ {
-		oor := binance.OpenOrdersRequest{
-			Symbol:     order.Symbol.String(),
-			RecvWindow: 5 * time.Second,
-			Timestamp:  time.Now(),
-		}
-		var oo []*binance.ExecutedOrder
-		err := util.BackoffRetry(5, func() error {
-			o, err := bi.Api.OpenOrders(oor)
-			oo = o
-			return err
-		})
-		if err != nil {
-			return err
-		}
-		if len(oo) == 0 {
-			return nil
-		}
-		time.Sleep(10 * time.Second)
-	}
+	return nil
+}
 
-	cor := binance.CancelOrderRequest{
-		Symbol:     order.Symbol.String(),
-		OrderID:    orderID,
-		RecvWindow: 5 * time.Second,
-		Timestamp:  time.Now(),
+func (bi Binance) ConfirmOrder(order *models.Order) (float64, error) {
+	oor := binance.OpenOrdersRequest{
+		Timestamp: time.Now(),
 	}
-	err = util.BackoffRetry(5, func() error {
+	var openOrders []*binance.ExecutedOrder
+	err := util.BackoffRetry(5, func() error {
+		oo, err := bi.Api.OpenOrders(oor)
+		openOrders = oo
+		return err
+	})
+	if err != nil {
+		return 0, err
+	}
+	for _, o := range openOrders {
+		if o.ClientOrderID == order.ClientOrderID {
+			return o.ExecutedQty, nil
+		}
+	}
+	return order.Qty, nil
+}
+
+func (bi Binance) CancelOrder(order *models.Order) error {
+	cor := binance.CancelOrderRequest{
+		Symbol:            order.Symbol.String(),
+		OrigClientOrderID: order.ClientOrderID,
+		RecvWindow:        5 * time.Second,
+		Timestamp:         time.Now(),
+	}
+	err := util.BackoffRetry(5, func() error {
 		_, err := bi.Api.CancelOrder(cor)
 		return err
 	})

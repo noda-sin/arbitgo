@@ -4,6 +4,8 @@ import (
 	"time"
 
 	models "github.com/OopsMouse/arbitgo/models"
+	"github.com/OopsMouse/arbitgo/util"
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -44,22 +46,17 @@ func (arbit *Arbitrader) Run() {
 
 		for {
 			depthList := <-ch
-			bestOrderBook := arbit.MarketAnalyzer.GenerateBestOrderBook(
+			orders := arbit.MarketAnalyzer.ArbitrageOrders(
 				depthList,
 				mainAssetBalance.Free,
 			)
-			if bestOrderBook == nil {
+			if orders == nil {
 				continue
 			}
 
-			log.WithField("score", bestOrderBook.Score).Info("found best order book")
-
-			err = arbit.Trade(bestOrderBook)
+			err = arbit.TradeOrder(orders, 60)
 			if err != nil {
-				log.WithError(err).Error("failed to arbit trade")
-				log.Error("begin to recovery balances")
-
-				arbit.Recovery()
+				log.WithError(err).Error("failed trade")
 			}
 
 			arbit.LogBalances()
@@ -69,26 +66,53 @@ func (arbit *Arbitrader) Run() {
 	}
 }
 
-func (arbit *Arbitrader) Trade(orderBook *models.OrderBook) error {
-	for i, o := range orderBook.Orders {
-		log.WithFields(log.Fields{
-			"number": i,
-			"symbol": o.Symbol.String(),
-			"side":   o.Side,
-			"type":   o.OrderType,
-			"price":  o.Price,
-			"qty":    o.Qty,
-		}).Info("challenge to order")
-		err := arbit.Exchange.SendOrder(o)
+func (arbit *Arbitrader) TradeOrder(orders []*models.Order, confirmRetry int) error {
+	o := orders[0]
+	log.WithFields(log.Fields{
+		"symbol": o.Symbol.String(),
+		"side":   o.Side,
+		"type":   o.OrderType,
+		"price":  o.Price,
+		"qty":    o.Qty,
+	}).Info("challenge to order")
+	err := arbit.Exchange.SendOrder(o)
+	if err != nil {
+		arbit.RecoveryOrder(o)
+		return err
+	}
+	for i := 0; i < confirmRetry; i++ {
+		executedQty, err := arbit.Exchange.ConfirmOrder(o)
 		if err != nil {
+			arbit.RecoveryOrder(o)
 			return err
 		}
+		log.Info("Executed Qty: ", executedQty)
+		if executedQty > 0 &&
+			o.Qty == executedQty {
+			if len(orders) == 1 { // FIN
+				return nil
+			}
+			return arbit.TradeOrder(orders[1:], confirmRetry)
+		}
 	}
-	return nil
+	arbit.RecoveryOrder(o)
+	return errors.Errorf("failed order")
 }
 
-func (arbit *Arbitrader) Recovery() {
-	balances, err := arbit.Exchange.GetBalances()
+func (arbit *Arbitrader) RecoveryOrder(order *models.Order) {
+	var currentAsset models.Asset
+	if order.Side == models.SideBuy {
+		currentAsset = order.QuoteAsset
+	} else {
+		currentAsset = order.BaseAsset
+	}
+
+	orders, err := arbit.MarketAnalyzer.ForceChangeOrders(
+		arbit.Exchange.GetSymbols(),
+		currentAsset,
+		arbit.MainAsset,
+	)
+
 	if err != nil {
 		log.WithError(err).Error("failed to recovery")
 		log.Error("please confirm and manualy recovery")
@@ -96,18 +120,28 @@ func (arbit *Arbitrader) Recovery() {
 		panic(err)
 	}
 
-	orderBook := arbit.MarketAnalyzer.GenerateRecoveryOrderBook(
-		arbit.MainAsset,
-		arbit.Exchange.GetSymbols(),
-		balances,
-	)
+	for _, order := range orders {
+		var currentAsset models.Asset
+		if order.Side == models.SideBuy {
+			currentAsset = order.QuoteAsset
+		} else {
+			currentAsset = order.BaseAsset
+		}
+		currentBalance, err := arbit.Exchange.GetBalance(currentAsset)
+		if err != nil {
+			log.WithError(err).Error("failed to recovery")
+			log.Error("please confirm and manualy recovery")
 
-	err = arbit.Trade(orderBook)
-	if err != nil {
-		log.WithError(err).Error("failed to recovery")
-		log.Error("please confirm and manualy recovery")
+			panic(err)
+		}
+		order.Qty = util.Floor(currentBalance.Free, order.Symbol.StepSize)
+		err = arbit.Exchange.SendOrder(order)
+		if err != nil {
+			log.WithError(err).Error("failed to recovery")
+			log.Error("please confirm and manualy recovery")
 
-		panic(err)
+			panic(err)
+		}
 	}
 }
 

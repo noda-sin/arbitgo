@@ -12,4 +12,6 @@ type Exchange interface {
 	GetDepthList() ([]*models.Depth, error)
 	OnUpdateDepthList(recv chan []*models.Depth) error
 	SendOrder(order *models.Order) error
+	ConfirmOrder(order *models.Order) (float64, error)
+	CancelOrder(order *models.Order) error
 }

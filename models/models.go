@@ -54,13 +54,14 @@ func (symbs Symbols) Swap(i, j int) {
 }
 
 type Order struct {
-	Symbol     Symbol
-	BaseAsset  Asset
-	QuoteAsset Asset
-	OrderType  OrderType
-	Price      float64
-	Side       OrderSide
-	Qty        float64
+	Symbol        Symbol
+	BaseAsset     Asset
+	QuoteAsset    Asset
+	OrderType     OrderType
+	Price         float64
+	Side          OrderSide
+	Qty           float64
+	ClientOrderID string
 }
 
 type OrderBook struct {
