@@ -114,11 +114,8 @@ func NewBinance(apikey string, secret string) Binance {
 		symbols = append(symbols, *symbol)
 	}
 
-	symbols = FilterByTopVolume(symbols, 30)
+	// symbols = FilterByTopVolume(symbols, 30)
 
-	for _, v := range symbols {
-		fmt.Println(v.Text, v.Volume)
-	}
 	quoteAssetList := []models.Asset{}
 	for _, s := range quoteAssetSet.ToSlice() {
 		quoteAssetList = append(quoteAssetList, models.Asset(s))
