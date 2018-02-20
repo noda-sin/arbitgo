@@ -5,7 +5,7 @@
   branch = "master"
   name = "github.com/OopsMouse/go-binance"
   packages = ["."]
-  revision = "39bcfbb3616e624eb176a1755070ad409b8a4003"
+  revision = "489176faa80b17a6c7d002cb017e29aa4aaf3947"
 
 [[projects]]
   name = "github.com/go-kit/kit"
@@ -27,6 +27,12 @@
   packages = ["."]
   revision = "259ab82a6cad3992b4e21ff5cac294ccb06474bc"
   version = "v1.7.0"
+
+[[projects]]
+  name = "github.com/google/uuid"
+  packages = ["."]
+  revision = "064e2069ce9c359c118179501254f67d7d37ba24"
+  version = "0.2"
 
 [[projects]]
   name = "github.com/gorilla/websocket"
@@ -88,6 +94,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "d3c97ef10f376505148fd2b7b360932b23f5845a2476ea400d584a10775529df"
+  inputs-digest = "042659403b55647aa1e933c64aca04d0de8c99f6b1aeae61dc098c9772189a6c"
   solver-name = "gps-cdcl"
   solver-version = 1
