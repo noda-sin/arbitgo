@@ -84,35 +84,35 @@ func NewBinance(apikey string, secret string) Binance {
 		symbols = append(symbols, symbol)
 	}
 
-	chans := []chan *models.Symbol{}
-	for _, s := range symbols {
-		ch := make(chan *models.Symbol)
-		go func(s models.Symbol) {
-			err := util.BackoffRetry(5, func() error {
-				tkr := binance.TickerRequest{
-					Symbol: s.Text,
-				}
-				tk24, err := b.Ticker24(tkr)
-				if tk24 != nil {
-					s.Volume = tk24.Volume
-				}
-				return err
-			})
+	// chans := []chan *models.Symbol{}
+	// for _, s := range symbols {
+	// 	ch := make(chan *models.Symbol)
+	// 	go func(s models.Symbol) {
+	// 		err := util.BackoffRetry(5, func() error {
+	// 			tkr := binance.TickerRequest{
+	// 				Symbol: s.Text,
+	// 			}
+	// 			tk24, err := b.Ticker24(tkr)
+	// 			if tk24 != nil {
+	// 				s.Volume = tk24.Volume
+	// 			}
+	// 			return err
+	// 		})
 
-			if err != nil {
-				panic(err)
-			}
+	// 		if err != nil {
+	// 			panic(err)
+	// 		}
 
-			ch <- &s
-		}(s)
-		chans = append(chans, ch)
-	}
+	// 		ch <- &s
+	// 	}(s)
+	// 	chans = append(chans, ch)
+	// }
 
-	symbols = []models.Symbol{}
-	for _, ch := range chans {
-		symbol := <-ch
-		symbols = append(symbols, *symbol)
-	}
+	// symbols = []models.Symbol{}
+	// for _, ch := range chans {
+	// 	symbol := <-ch
+	// 	symbols = append(symbols, *symbol)
+	// }
 
 	// symbols = FilterByTopVolume(symbols, 30)
 
@@ -167,11 +167,11 @@ func (bi Binance) GetBalance(asset models.Asset) (*models.Balance, error) {
 		return nil, err
 	}
 	for _, b := range balances {
-		if b.Asset == asset {
+		if string(b.Asset) == string(asset) {
 			return b, nil
 		}
 	}
-	return nil, fmt.Errorf("Not found balance for %s", asset)
+	return nil, fmt.Errorf("Not found balance for %s", string(asset))
 }
 
 func (bi Binance) GetBalances() ([]*models.Balance, error) {
@@ -274,6 +274,7 @@ func (bi Binance) OnUpdateDepthList(recv chan []*models.Depth) error {
 				})
 
 				if err != nil {
+					fmt.Println("retry connect", err)
 					continue
 				}
 
@@ -355,7 +356,9 @@ func (bi Binance) SendOrder(order *models.Order) error {
 
 func (bi Binance) ConfirmOrder(order *models.Order) (float64, error) {
 	oor := binance.OpenOrdersRequest{
-		Timestamp: time.Now(),
+		Symbol:     order.Symbol.String(),
+		RecvWindow: 5 * time.Second,
+		Timestamp:  time.Now(),
 	}
 	var openOrders []*binance.ExecutedOrder
 	err := util.BackoffRetry(5, func() error {

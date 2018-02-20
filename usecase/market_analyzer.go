@@ -321,11 +321,13 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 		return nil
 	}
 
+	qty1 = util.Floor(qty1, symbol1.StepSize)
+	qty2 = util.Floor(qty2, symbol2.StepSize)
+	qty3 = util.Floor(qty3, symbol3.StepSize)
+
 	orders := []*models.Order{}
 	orders = append(orders, &models.Order{
 		Symbol:        symbol1,
-		QuoteAsset:    depth1.QuoteAsset,
-		BaseAsset:     depth1.BaseAsset,
 		OrderType:     models.TypeLimit,
 		Price:         price1,
 		Side:          side1,
@@ -335,8 +337,6 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 
 	orders = append(orders, &models.Order{
 		Symbol:        symbol2,
-		QuoteAsset:    depth2.QuoteAsset,
-		BaseAsset:     depth2.BaseAsset,
 		OrderType:     models.TypeLimit,
 		Price:         price2,
 		Side:          side2,
@@ -346,8 +346,6 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 
 	orders = append(orders, &models.Order{
 		Symbol:        symbol3,
-		QuoteAsset:    depth3.QuoteAsset,
-		BaseAsset:     depth3.BaseAsset,
 		OrderType:     models.TypeLimit,
 		Price:         price3,
 		Side:          side3,

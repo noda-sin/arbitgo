@@ -54,7 +54,7 @@ func (arbit *Arbitrader) Run() {
 				continue
 			}
 
-			err = arbit.TradeOrder(orders, 60)
+			err = arbit.TradeOrder(orders, 1)
 			if err != nil {
 				log.WithError(err).Error("failed trade")
 			}
@@ -86,7 +86,6 @@ func (arbit *Arbitrader) TradeOrder(orders []*models.Order, confirmRetry int) er
 			arbit.RecoveryOrder(o)
 			return err
 		}
-		log.Info("Executed Qty: ", executedQty)
 		if executedQty > 0 &&
 			o.Qty == executedQty {
 			if len(orders) == 1 { // FIN
@@ -100,11 +99,16 @@ func (arbit *Arbitrader) TradeOrder(orders []*models.Order, confirmRetry int) er
 }
 
 func (arbit *Arbitrader) RecoveryOrder(order *models.Order) {
+	log.Info("try to recovery")
 	var currentAsset models.Asset
 	if order.Side == models.SideBuy {
-		currentAsset = order.QuoteAsset
+		currentAsset = order.Symbol.QuoteAsset
 	} else {
-		currentAsset = order.BaseAsset
+		currentAsset = order.Symbol.BaseAsset
+	}
+	if currentAsset == arbit.MainAsset {
+		// nothing to do
+		return
 	}
 
 	orders, err := arbit.MarketAnalyzer.ForceChangeOrders(
@@ -121,11 +125,17 @@ func (arbit *Arbitrader) RecoveryOrder(order *models.Order) {
 	}
 
 	for _, order := range orders {
+		log.WithFields(log.Fields{
+			"symbol": order.Symbol.String(),
+			"side":   order.Side,
+			"type":   order.OrderType,
+			"qty":    order.Qty,
+		}).Info("recovery order")
 		var currentAsset models.Asset
 		if order.Side == models.SideBuy {
-			currentAsset = order.QuoteAsset
+			currentAsset = order.Symbol.QuoteAsset
 		} else {
-			currentAsset = order.BaseAsset
+			currentAsset = order.Symbol.BaseAsset
 		}
 		currentBalance, err := arbit.Exchange.GetBalance(currentAsset)
 		if err != nil {
