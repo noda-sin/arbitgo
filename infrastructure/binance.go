@@ -226,7 +226,12 @@ func (bi Binance) GetDepth(symbol models.Symbol) (*models.Depth, error) {
 	if err != nil {
 		return nil, err
 	}
-	return GetDepthInOrderBook(symbol, book, bi.QuoteAssetList)
+	depth, err := GetDepthInOrderBook(symbol, book, bi.QuoteAssetList)
+	if err != nil {
+		return nil, err
+	}
+	bi.SetDepth(symbol, depth)
+	return depth, nil
 }
 
 func GetDepthInOrderBook(symbol models.Symbol, orderBook *binance.OrderBook, quoteAssetList []models.Asset) (*models.Depth, error) {

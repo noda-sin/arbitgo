@@ -1,6 +1,8 @@
 package usecase
 
 import (
+	"strconv"
+
 	models "github.com/OopsMouse/arbitgo/models"
 	"github.com/OopsMouse/arbitgo/util"
 	"github.com/pkg/errors"
@@ -35,6 +37,17 @@ func (ma *MarketAnalyzer) ArbitrageOrders(depthList []*models.Depth, currBalance
 		if score > bestScore {
 			bestScore = score
 			bestOrders = orders
+
+			for i, depth := range d.DepthList {
+				log.Info("----------------- depth #" + strconv.Itoa(i+1) + " -----------------")
+				log.Info(" Symbol   : ", depth.Symbol)
+				log.Info(" AskPrice : ", depth.AskPrice)
+				log.Info(" AskQty   : ", depth.AskQty)
+				log.Info(" BidPrice : ", depth.BidPrice)
+				log.Info(" BidQty   : ", depth.BidQty)
+				log.Info("--------------------------------------------")
+			}
+			log.Info("#Score : ", score)
 		}
 	}
 
@@ -506,12 +519,26 @@ func (ma *MarketAnalyzer) ValidateOrders(orders []models.Order, depthes []*model
 		for _, depth := range depthes {
 			if order.Symbol.String() == depth.Symbol.String() {
 				if order.Side == models.SideBuy {
+					log.Info("----------------- depth #" + strconv.Itoa(order.Step) + " -----------------")
+					log.Info(" Symbol   : ", order.Symbol)
+					log.Info(" Side     : ", order.Side)
+					log.Info(" Price    : ", order.Price, " vs ", depth.AskPrice)
+					log.Info(" Quantity : ", order.Qty, " vs ", depth.AskQty)
+					log.Info("--------------------------------------------")
+
 					ok := (depth.AskPrice <= order.Price) && (depth.AskQty >= order.Qty)
 					if ok == false {
 						return false
 					}
 				} else {
-					ok := (depth.BidPrice >= order.Price) && (depth.AskQty >= order.Qty)
+					log.Info("----------------- depth #" + strconv.Itoa(order.Step) + " -----------------")
+					log.Info(" Symbol   : ", order.Symbol)
+					log.Info(" Side     : ", order.Side)
+					log.Info(" Price    : ", order.Price, " vs ", depth.BidPrice)
+					log.Info(" Quantity : ", order.Qty, " vs ", depth.BidQty)
+					log.Info("--------------------------------------------")
+
+					ok := (depth.BidPrice >= order.Price) && (depth.BidQty >= order.Qty)
 					if ok == false {
 						return false
 					}

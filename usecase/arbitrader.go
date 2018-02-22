@@ -324,7 +324,7 @@ func (arbit *Arbitrader) ValidateOrders(orders []models.Order, currBalance float
 	}
 
 	ok := arbit.MarketAnalyzer.ValidateOrders(orders, depthes)
-	if ok {
+	if ok == true {
 		return orders, nil
 	}
 
