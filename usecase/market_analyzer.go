@@ -24,38 +24,25 @@ func NewMarketAnalyzer(mainAsset models.Asset, charge float64, maxqty float64, t
 	}
 }
 
-func (ma *MarketAnalyzer) ArbitrageOrders(depthList []*models.Depth, currBalance float64) []*models.Order {
-	var best *models.OrderBook
-	var depth *models.RotationDepth
+func (ma *MarketAnalyzer) ArbitrageOrders(depthList []*models.Depth, currBalance float64) []models.Order {
+	var bastScore float64
+	var bestOrders []models.Order
 	for _, d := range GenerateRotationDepthList(ma.MainAsset, depthList) {
-		orderBook := GenerateOrderBook(ma.MainAsset, d, currBalance, ma.MaxQty, ma.Charge)
-		if orderBook == nil {
+		score, orders := GenerateOrderBook(ma.MainAsset, d, currBalance, ma.MaxQty, ma.Charge)
+		if orders == nil {
 			continue
 		}
-		if best == nil || orderBook.Score > best.Score {
-			best = orderBook
-			depth = d
+		if score > bastScore {
+			bestOrders = orders
 		}
 	}
 
-	if best == nil || best.Score <= ma.Threshold {
+	if bestOrders == nil ||
+		bastScore <= ma.Threshold {
 		return nil
 	}
 
-	for _, d := range depth.DepthList {
-		log.WithFields(log.Fields{
-			"Symbol":      d.Symbol,
-			"BidPrice":    d.BidPrice,
-			"BidQty":      d.BidQty,
-			"AskPrice":    d.AskPrice,
-			"AskQty":      d.AskQty,
-			"MaxQty":      d.Symbol.MaxQty,
-			"MinQty":      d.Symbol.MinQty,
-			"MinNotional": d.Symbol.MinNotional,
-		}).Debug("best order depth")
-	}
-
-	return best.Orders
+	return bestOrders
 }
 
 func GenerateRotationDepthList(mainAsset models.Asset, depthList []*models.Depth) []*models.RotationDepth {
@@ -127,9 +114,9 @@ func GenerateRotationDepthList(mainAsset models.Asset, depthList []*models.Depth
 	return rotateDepthList
 }
 
-func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth, currentBalance float64, maxLimitQty float64, charge float64) *models.OrderBook {
+func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth, currentBalance float64, maxLimitQty float64, charge float64) (float64, []models.Order) {
 	if rotateDepth == nil || len(rotateDepth.DepthList) == 0 {
-		return nil
+		return 0, nil
 	}
 
 	currentAsset := mainAsset
@@ -182,7 +169,7 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 			qty2 = depth2.BidQty * price1
 		} else {
 			// ありえない
-			return nil
+			return 0, nil
 		}
 		currentAsset = depth2.QuoteAsset
 	}
@@ -226,7 +213,7 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 
 	if symbol1.MinNotional > minMainQty {
 		log.Debug("Qty is less than min notional")
-		return nil
+		return 0, nil
 	}
 
 	beginMainQty := minMainQty
@@ -242,12 +229,12 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 	// 制限チェック
 	if symbol1.MaxQty < qty1 || symbol1.MinQty > qty1 || symbol2.MinNotional > qty1 {
 		log.Debug("Symbol1 qty is not within the limit range")
-		return nil
+		return 0, nil
 	}
 
 	if symbol1.MaxPrice < price1 || symbol1.MinPrice > price1 {
 		log.Debug("Symbol1 price is not within the limit range")
-		return nil
+		return 0, nil
 	}
 
 	// チャージ計算
@@ -270,12 +257,12 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 	// 制限チェック
 	if symbol2.MaxQty < qty2 || symbol2.MinQty > qty2 || symbol3.MinNotional > qty2 {
 		log.Debug("Symbol2 qty is not within the limit range")
-		return nil
+		return 0, nil
 	}
 
 	if symbol2.MaxPrice < price2 || symbol2.MinPrice > price2 {
 		log.Debug("Symbol2 price is not within the limit range")
-		return nil
+		return 0, nil
 	}
 
 	// チャージ計算
@@ -298,12 +285,12 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 	// 制限チェック
 	if symbol3.MaxQty < qty3 || symbol3.MinQty > qty3 {
 		log.Debug("Symbol3 qty is not within the limit range")
-		return nil
+		return 0, nil
 	}
 
 	if symbol3.MaxPrice < price3 || symbol3.MinPrice > price3 {
 		log.Debug("Symbol3 price is not within the limit range")
-		return nil
+		return 0, nil
 	}
 
 	var endMainQty float64
@@ -318,15 +305,15 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 	// 制限チェック
 	if score < 0 {
 		log.Debug("Score is less than 0")
-		return nil
+		return 0, nil
 	}
 
 	qty1 = util.Floor(qty1, symbol1.StepSize)
 	qty2 = util.Floor(qty2, symbol2.StepSize)
 	qty3 = util.Floor(qty3, symbol3.StepSize)
 
-	orders := []*models.Order{}
-	orders = append(orders, &models.Order{
+	orders := []models.Order{}
+	orders = append(orders, models.Order{
 		Symbol:        symbol1,
 		OrderType:     models.TypeLimit,
 		Price:         price1,
@@ -335,7 +322,7 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 		ClientOrderID: uuid.New().String(),
 	})
 
-	orders = append(orders, &models.Order{
+	orders = append(orders, models.Order{
 		Symbol:        symbol2,
 		OrderType:     models.TypeLimit,
 		Price:         price2,
@@ -344,7 +331,7 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 		ClientOrderID: uuid.New().String(),
 	})
 
-	orders = append(orders, &models.Order{
+	orders = append(orders, models.Order{
 		Symbol:        symbol3,
 		OrderType:     models.TypeLimit,
 		Price:         price3,
@@ -353,20 +340,16 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 		ClientOrderID: uuid.New().String(),
 	})
 
-	return &models.OrderBook{
-		WillBeQty: endMainQty,
-		Score:     score,
-		Orders:    orders,
-	}
+	return score, orders
 }
 
-func (ma *MarketAnalyzer) ForceChangeOrders(symbols []models.Symbol, from models.Asset, to models.Asset) ([]*models.Order, error) {
-	orders := []*models.Order{}
+func (ma *MarketAnalyzer) ForceChangeOrders(symbols []models.Symbol, from models.Asset, to models.Asset) ([]models.Order, error) {
+	orders := []models.Order{}
 
 	// 直接的に変える手段を検索
 	for _, s := range symbols {
 		if s.QuoteAsset == from && s.BaseAsset == to {
-			orders = append(orders, &models.Order{
+			orders = append(orders, models.Order{
 				Symbol:        s,
 				OrderType:     models.TypeMarket,
 				Side:          models.SideBuy,
@@ -374,7 +357,7 @@ func (ma *MarketAnalyzer) ForceChangeOrders(symbols []models.Symbol, from models
 			})
 			return orders, nil
 		} else if s.QuoteAsset == to && s.BaseAsset == from {
-			orders = append(orders, &models.Order{
+			orders = append(orders, models.Order{
 				Symbol:        s,
 				OrderType:     models.TypeMarket,
 				Side:          models.SideSell,
@@ -398,13 +381,13 @@ func (ma *MarketAnalyzer) ForceChangeOrders(symbols []models.Symbol, from models
 	for _, i := range symbolsRelatedFrom {
 		for _, j := range symbolsRelatedTo {
 			if i.QuoteAsset == from && i.BaseAsset == j.BaseAsset {
-				orders = append(orders, &models.Order{
+				orders = append(orders, models.Order{
 					Symbol:        i,
 					OrderType:     models.TypeMarket,
 					Side:          models.SideBuy,
 					ClientOrderID: uuid.New().String(),
 				})
-				orders = append(orders, &models.Order{
+				orders = append(orders, models.Order{
 					Symbol:        j,
 					OrderType:     models.TypeMarket,
 					Side:          models.SideSell,
@@ -412,13 +395,13 @@ func (ma *MarketAnalyzer) ForceChangeOrders(symbols []models.Symbol, from models
 				})
 				return orders, nil
 			} else if i.QuoteAsset == from && i.BaseAsset == j.QuoteAsset {
-				orders = append(orders, &models.Order{
+				orders = append(orders, models.Order{
 					Symbol:        i,
 					OrderType:     models.TypeMarket,
 					Side:          models.SideBuy,
 					ClientOrderID: uuid.New().String(),
 				})
-				orders = append(orders, &models.Order{
+				orders = append(orders, models.Order{
 					Symbol:        j,
 					OrderType:     models.TypeMarket,
 					Side:          models.SideBuy,
@@ -426,13 +409,13 @@ func (ma *MarketAnalyzer) ForceChangeOrders(symbols []models.Symbol, from models
 				})
 				return orders, nil
 			} else if i.BaseAsset == from && i.QuoteAsset == j.BaseAsset {
-				orders = append(orders, &models.Order{
+				orders = append(orders, models.Order{
 					Symbol:        i,
 					OrderType:     models.TypeMarket,
 					Side:          models.SideSell,
 					ClientOrderID: uuid.New().String(),
 				})
-				orders = append(orders, &models.Order{
+				orders = append(orders, models.Order{
 					Symbol:        j,
 					OrderType:     models.TypeMarket,
 					Side:          models.SideSell,
@@ -440,13 +423,13 @@ func (ma *MarketAnalyzer) ForceChangeOrders(symbols []models.Symbol, from models
 				})
 				return orders, nil
 			} else if i.BaseAsset == from && i.QuoteAsset == j.QuoteAsset {
-				orders = append(orders, &models.Order{
+				orders = append(orders, models.Order{
 					Symbol:        i,
 					OrderType:     models.TypeMarket,
 					Side:          models.SideSell,
 					ClientOrderID: uuid.New().String(),
 				})
-				orders = append(orders, &models.Order{
+				orders = append(orders, models.Order{
 					Symbol:        j,
 					OrderType:     models.TypeMarket,
 					Side:          models.SideBuy,
@@ -457,4 +440,46 @@ func (ma *MarketAnalyzer) ForceChangeOrders(symbols []models.Symbol, from models
 		}
 	}
 	return nil, errors.Errorf("Not found orders to force change")
+}
+
+func (ma *MarketAnalyzer) SplitOrders(parentOrders []models.Order, qty float64) ([]models.Order, []models.Order) {
+	newParentOrders := []models.Order{}
+	childOrders := []models.Order{}
+	nextQty := qty
+	var pravious *models.Order
+
+	for i, o := range parentOrders {
+		if pravious != nil {
+			nextQty = (1 - ma.Charge) * nextQty
+			if o.Side == models.SideBuy {
+				nextQty = util.Floor(nextQty/pravious.Price, o.Symbol.StepSize)
+			} else {
+				nextQty = util.Floor((nextQty*pravious.Price)/o.Price, o.Symbol.StepSize)
+			}
+		}
+
+		newParentOrders = append(newParentOrders, models.Order{
+			Symbol:        o.Symbol,
+			OrderType:     o.OrderType,
+			Price:         o.Price,
+			Side:          o.Side,
+			Qty:           o.Qty - nextQty,
+			ClientOrderID: o.ClientOrderID,
+		})
+
+		if i > 0 {
+			childOrders = append(childOrders, models.Order{
+				Symbol:        o.Symbol,
+				OrderType:     o.OrderType,
+				Price:         o.Price,
+				Side:          o.Side,
+				Qty:           nextQty,
+				ClientOrderID: o.ClientOrderID,
+			})
+		}
+
+		pravious = &o
+	}
+
+	return newParentOrders, childOrders
 }

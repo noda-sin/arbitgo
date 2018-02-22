@@ -80,23 +80,11 @@ func (arbit *Arbitrader) Run() {
 			}
 
 			log.Info("Found arbit orders")
-			for i, order := range orders {
-				log.Info("----------------- orders ", i, " -----------------")
-				log.Info(" OrderID  : ", order.ClientOrderID)
-				log.Info(" Symbol   : ", order.Symbol.String())
-				log.Info(" Side     : ", order.Side)
-				log.Info(" Type     : ", order.OrderType)
-				log.Info(" Price    : ", order.Price)
-				log.Info(" Quantity : ", order.Qty)
-				log.Info("--------------------------------------------")
-			}
+			LogOrders(orders)
 
 			log.Info("Starting trade ....")
 
-			err = arbit.TradeOrder(orders)
-			if err != nil {
-				log.WithError(err).Error("Trade failed")
-			}
+			<-arbit.TradeOrder(orders)
 
 			arbit.LogBalances()
 
@@ -107,97 +95,123 @@ func (arbit *Arbitrader) Run() {
 	}
 }
 
-func (arbit *Arbitrader) TradeOrder(orders []*models.Order) error {
-	order := orders[0]
-	log.Info("START - send order")
-	log.Info("----------------- order --------------------")
-	log.Info(" OrderID  : ", order.ClientOrderID)
-	log.Info(" Symbol   : ", order.Symbol.String())
-	log.Info(" Side     : ", order.Side)
-	log.Info(" Type     : ", order.OrderType)
-	log.Info(" Price    : ", order.Price)
-	log.Info(" Quantity : ", order.Qty)
-	log.Info("--------------------------------------------")
+func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
+	done := make(chan struct{})
+	currentOrders := orders
+	currentOrder := currentOrders[0]
 
-	err := arbit.Exchange.SendOrder(order)
-	log.Info("END - send order")
+	go func() {
+		defer close(done)
 
-	if err != nil {
-		log.WithError(err).Error("Send order failed")
-		return arbit.RecoveryOrder(order)
-	}
-
-	executedTotalQty := 0.0
-	waitingTotalQty := order.Qty
-
-	for i := 0; i < 10; i++ {
-		log.Info("START - confirm order")
-		log.Info("OrderID: ", order.ClientOrderID)
-		var executedQty float64
-		executedQty, err = arbit.Exchange.ConfirmOrder(order)
-		log.Info("END - confirm order")
-		if err != nil {
-			log.WithError(err).Error("Confirm order failed")
-			continue
+		if len(orders) == 0 {
+			return
 		}
 
-		log.Info("------------------------------------------")
-		log.Info("Executed total quantity : ", executedTotalQty, " --> ", executedTotalQty+executedQty)
-		log.Info("Waiting total quantity  : ", waitingTotalQty, " --> ", waitingTotalQty-executedQty)
-		log.Info("------------------------------------------")
+		log.WithField("OrderID", currentOrder.ClientOrderID).Info("START - send order")
+		LogOrder(currentOrder)
 
-		executedTotalQty += executedQty
-		waitingTotalQty -= executedQty
-
-		if waitingTotalQty <= 0 {
-			log.Info("Success order about entire quantity")
-			break
-		} else if executedTotalQty > 0 && executedTotalQty > order.Symbol.MinQty {
-			// executedTotalQty = 0
-			// 別トレーディングとして注文
-		}
-
-		log.Info("Sleeping 10 second")
-		time.Sleep(10 * time.Second)
-	}
-
-	if waitingTotalQty > 0 {
-		log.Warn("Order did not end within time limit")
-		log.Info("START - Cancel order")
-		log.Info("----------------- order --------------------")
-		log.Info(" OrderID  : ", order.ClientOrderID)
-		log.Info(" Symbol   : ", order.Symbol.String())
-		log.Info(" Side     : ", order.Side)
-		log.Info(" Type     : ", order.OrderType)
-		log.Info(" Price    : ", order.Price)
-		log.Info(" Quantity : ", order.Qty)
-		log.Info("--------------------------------------------")
-		err := arbit.Exchange.CancelOrder(order)
-		log.Info("END - Cancel order")
+		err := arbit.Exchange.SendOrder(&currentOrder)
+		log.WithField("OrderID", currentOrder.ClientOrderID).Info("END - send order")
 
 		if err != nil {
-			log.WithError(err).Error("Cancel order failed")
-			log.Error("Please confirm and manualy cancel order")
-			panic(err)
+			log.WithField("OrderID", currentOrder.ClientOrderID).WithError(err).Error("Send order failed")
+			arbit.RecoveryOrder(currentOrder)
+			return
 		}
 
-		return arbit.RecoveryOrder(&models.Order{
-			Symbol:    order.Symbol,
-			Side:      order.Side,
-			OrderType: order.OrderType,
-			Price:     order.Price,
-			Qty:       waitingTotalQty,
-		})
-	}
+		executedTotalQty := 0.0
+		waitingTotalQty := currentOrder.Qty
+		childTrades := []chan struct{}{}
 
-	if len(orders) == 1 { // FIN
-		return nil
-	}
+		for i := 0; i < 10; i++ {
+			log.WithField("OrderID", currentOrder.ClientOrderID).Info("START - confirm order")
+			log.Info("OrderID: ", currentOrder.ClientOrderID)
+			var executedQty float64
+			executedQty, err = arbit.Exchange.ConfirmOrder(&currentOrder)
+			log.WithField("OrderID", currentOrder.ClientOrderID).Info("END - confirm order")
+			if err != nil {
+				log.WithField("OrderID", currentOrder.ClientOrderID).WithError(err).Error("Confirm order failed")
+				continue
+			}
 
-	return arbit.TradeOrder(orders[1:])
+			log.WithField("OrderID", currentOrder.ClientOrderID).Info("------------------------------------------")
+			log.WithField("OrderID", currentOrder.ClientOrderID).Info("Executed total quantity : ", executedTotalQty, " --> ", executedTotalQty+executedQty)
+			log.WithField("OrderID", currentOrder.ClientOrderID).Info("Waiting total quantity  : ", waitingTotalQty, " --> ", waitingTotalQty-executedQty)
+			log.WithField("OrderID", currentOrder.ClientOrderID).Info("------------------------------------------")
+
+			executedTotalQty += executedQty
+			waitingTotalQty -= executedQty
+
+			if waitingTotalQty <= 0 {
+				log.WithField("OrderID", currentOrder.ClientOrderID).Info("Success order about entire quantity")
+				break
+			} else if executedTotalQty > 0 && executedTotalQty > currentOrder.Symbol.MinQty {
+				// 別トレーディングとして注文
+				log.WithField("OrderID", currentOrder.ClientOrderID).Info("Few quantity into order earlier succeeded")
+				log.WithField("OrderID", currentOrder.ClientOrderID).Info("Create a child and trade ahead child trade")
+
+				executedTotalQty = 0
+				var childOrders []models.Order
+				log.WithField("OrderID", currentOrder.ClientOrderID).Info("START - create child orders")
+
+				currentOrders, childOrders = arbit.MarketAnalyzer.SplitOrders(orders, executedQty)
+				currentOrder = currentOrders[0]
+
+				log.WithField("OrderID", currentOrder.ClientOrderID).Info("# Parent Orders")
+				LogOrders(currentOrders)
+				log.WithField("OrderID", currentOrder.ClientOrderID).Info("# Child Orders")
+				LogOrders(childOrders)
+
+				log.WithField("OrderID", currentOrder.ClientOrderID).Info("END - create child orders")
+				childTrade := arbit.TradeOrder(childOrders)
+				childTrades = append(childTrades, childTrade)
+			}
+
+			log.WithField("OrderID", currentOrder.ClientOrderID).Info("Sleeping 10 second")
+			time.Sleep(10 * time.Second)
+		}
+
+		defer func() {
+			for _, c := range childTrades {
+				<-c
+			}
+		}()
+
+		if waitingTotalQty > 0 {
+			log.WithField("OrderID", currentOrder.ClientOrderID).Warn("Order did not end within time limit")
+			log.WithField("OrderID", currentOrder.ClientOrderID).Info("START - Cancel order")
+			LogOrder(currentOrder)
+
+			err := arbit.Exchange.CancelOrder(&currentOrder)
+			log.WithField("OrderID", currentOrder.ClientOrderID).Info("END - Cancel order")
+
+			if err != nil {
+				log.WithField("OrderID", currentOrder.ClientOrderID).WithError(err).Error("Cancel order failed")
+				log.WithField("OrderID", currentOrder.ClientOrderID).Error("Please confirm and manualy cancel order")
+				panic(err)
+			}
+
+			arbit.RecoveryOrder(models.Order{
+				Symbol:    currentOrder.Symbol,
+				Side:      currentOrder.Side,
+				OrderType: currentOrder.OrderType,
+				Price:     currentOrder.Price,
+				Qty:       waitingTotalQty,
+			})
+			return
+		}
+
+		if len(currentOrders) == 1 { // FIN
+			return
+		}
+
+		<-arbit.TradeOrder(currentOrders[1:])
+	}()
+
+	return done
 }
 
-func (arbit *Arbitrader) RecoveryOrder(order *models.Order) error {
+func (arbit *Arbitrader) RecoveryOrder(order models.Order) {
 	var currentAsset models.Asset
 	if order.Side == models.SideBuy {
 		currentAsset = order.Symbol.QuoteAsset
@@ -212,7 +226,7 @@ func (arbit *Arbitrader) RecoveryOrder(order *models.Order) error {
 		log.Info("Recovery is unnecessary")
 
 		// nothing to do
-		return nil
+		return
 	}
 
 	log.Info("Finding orders to recovery")
@@ -231,15 +245,7 @@ func (arbit *Arbitrader) RecoveryOrder(order *models.Order) error {
 	}
 
 	log.Info("Found orders to recovery")
-	for i, order := range orders {
-		log.Info("----------------- orders ", i, " -----------------")
-		log.Info(" OrderID  : ", order.ClientOrderID)
-		log.Info(" Symbol   : ", order.Symbol.String())
-		log.Info(" Side     : ", order.Side)
-		log.Info(" Type     : ", order.OrderType)
-		log.Info(" Quantity : ", order.Qty)
-		log.Info("--------------------------------------------")
-	}
+	LogOrders(orders)
 
 	log.Info("Starting recovery ....")
 
@@ -260,15 +266,9 @@ func (arbit *Arbitrader) RecoveryOrder(order *models.Order) error {
 		order.Qty = util.Floor(currentBalance.Free, order.Symbol.StepSize)
 
 		log.Info("START - send recovery order")
-		log.Info("----------------- order --------------------")
-		log.Info(" OrderID  : ", order.ClientOrderID)
-		log.Info(" Symbol   : ", order.Symbol.String())
-		log.Info(" Side     : ", order.Side)
-		log.Info(" Type     : ", order.OrderType)
-		log.Info(" Quantity : ", order.Qty)
-		log.Info("--------------------------------------------")
+		LogOrder(order)
 
-		err = arbit.Exchange.SendOrder(order)
+		err = arbit.Exchange.SendOrder(&order)
 
 		log.Info("END - send recovery order")
 
@@ -279,7 +279,34 @@ func (arbit *Arbitrader) RecoveryOrder(order *models.Order) error {
 			panic(err)
 		}
 	}
-	return nil
+
+	log.Info("Success to recovery")
+
+	return
+}
+
+func LogOrder(order models.Order) {
+	log.Info("----------------- orders -------------------")
+	log.Info(" OrderID  : ", order.ClientOrderID)
+	log.Info(" Symbol   : ", order.Symbol.String())
+	log.Info(" Side     : ", order.Side)
+	log.Info(" Type     : ", order.OrderType)
+	log.Info(" Price    : ", order.Price)
+	log.Info(" Quantity : ", order.Qty)
+	log.Info("--------------------------------------------")
+}
+
+func LogOrders(orders []models.Order) {
+	for i, order := range orders {
+		log.Info("----------------- orders ", i, " -----------------")
+		log.Info(" OrderID  : ", order.ClientOrderID)
+		log.Info(" Symbol   : ", order.Symbol.String())
+		log.Info(" Side     : ", order.Side)
+		log.Info(" Type     : ", order.OrderType)
+		log.Info(" Price    : ", order.Price)
+		log.Info(" Quantity : ", order.Qty)
+		log.Info("--------------------------------------------")
+	}
 }
 
 func (arbit *Arbitrader) LogBalances() {

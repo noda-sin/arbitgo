@@ -62,12 +62,6 @@ type Order struct {
 	ClientOrderID string
 }
 
-type OrderBook struct {
-	WillBeQty float64
-	Score     float64
-	Orders    []*Order
-}
-
 type Depth struct {
 	BaseAsset  Asset
 	QuoteAsset Asset

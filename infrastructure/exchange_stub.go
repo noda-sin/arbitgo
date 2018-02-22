@@ -6,6 +6,7 @@ import (
 	"time"
 
 	models "github.com/OopsMouse/arbitgo/models"
+	"github.com/OopsMouse/arbitgo/util"
 )
 
 type ExchangeStub struct {
@@ -81,6 +82,25 @@ func (ex ExchangeStub) OnUpdateDepthList(recv chan []*models.Depth) error {
 }
 
 func (ex ExchangeStub) SendOrder(order *models.Order) error {
+	return nil
+}
+
+func (ex ExchangeStub) ConfirmOrder(order *models.Order) (float64, error) {
+	rand.Seed(time.Now().UnixNano())
+	randInt := rand.Intn(15)
+	if randInt > 7 {
+		return 0, nil
+	} else if randInt <= 7 && randInt < 5 {
+		ex.CommitOrder(order, order.Qty)
+		return order.Qty, nil
+	} else {
+		commitQty := util.Floor(order.Qty*float64(randInt)/15, order.Symbol.StepSize)
+		ex.CommitOrder(order, commitQty)
+		return commitQty, nil
+	}
+}
+
+func (ex ExchangeStub) CommitOrder(order *models.Order, qty float64) error {
 	if order.Side == models.SideBuy {
 		balance, err := ex.GetBalance(order.Symbol.QuoteAsset)
 		if err != nil {
@@ -95,8 +115,8 @@ func (ex ExchangeStub) SendOrder(order *models.Order) error {
 		} else {
 			price = order.Symbol.MinPrice
 		}
-		ex.SubBalance(order.Symbol.QuoteAsset, order.Qty*price)
-		ex.AddBalance(order.Symbol.BaseAsset, order.Qty)
+		ex.SubBalance(order.Symbol.QuoteAsset, qty*price)
+		ex.AddBalance(order.Symbol.BaseAsset, qty)
 	} else {
 		balance, err := ex.GetBalance(order.Symbol.BaseAsset)
 		if err != nil {
@@ -111,22 +131,10 @@ func (ex ExchangeStub) SendOrder(order *models.Order) error {
 		} else {
 			price = order.Symbol.MinPrice
 		}
-		ex.AddBalance(order.Symbol.QuoteAsset, order.Qty*price)
-		ex.SubBalance(order.Symbol.BaseAsset, order.Qty)
+		ex.AddBalance(order.Symbol.QuoteAsset, qty*price)
+		ex.SubBalance(order.Symbol.BaseAsset, qty)
 	}
 	return nil
-}
-
-func (ex ExchangeStub) ConfirmOrder(order *models.Order) (float64, error) {
-	rand.Seed(time.Now().UnixNano())
-	randInt := rand.Intn(15)
-	if randInt > 7 {
-		return 0, nil
-	} else if randInt <= 7 && randInt < 2 {
-		return order.Qty, nil
-	} else {
-		return order.Qty / 2.0, nil
-	}
 }
 
 func (ex ExchangeStub) CancelOrder(order *models.Order) error {
