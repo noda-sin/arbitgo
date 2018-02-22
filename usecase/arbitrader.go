@@ -1,6 +1,8 @@
 package usecase
 
 import (
+	"fmt"
+	"strconv"
 	"time"
 
 	models "github.com/OopsMouse/arbitgo/models"
@@ -81,6 +83,13 @@ func (arbit *Arbitrader) Run() {
 
 			log.Info("Found arbit orders")
 			LogOrders(orders)
+
+			log.Info("Validate orders")
+			orders, err := arbit.ValidateOrders(orders, mainAssetBalance.Free)
+			if err != nil {
+				log.WithError(err).Warn("Validate orders failed")
+				continue
+			}
 
 			log.Info("Starting trade ....")
 
@@ -282,8 +291,52 @@ func (arbit *Arbitrader) RecoveryOrder(order models.Order) {
 	return
 }
 
+func (arbit *Arbitrader) ValidateOrders(orders []models.Order, currBalance float64) ([]models.Order, error) {
+	depthes := []*models.Depth{}
+	depch := make(chan *models.Depth)
+	errch := make(chan error)
+
+	defer close(depch)
+	defer close(errch)
+
+	for _, order := range orders {
+		go func(order models.Order) {
+			depth, err := arbit.Exchange.GetDepth(order.Symbol)
+			if err != nil {
+				errch <- err
+				return
+			}
+			depch <- depth
+		}(order)
+	}
+
+	for {
+		select {
+		case depth := <-depch:
+			depthes = append(depthes, depth)
+		case err := <-errch:
+			return nil, err
+		}
+
+		if len(depthes) == len(orders) {
+			break
+		}
+	}
+
+	ok := arbit.MarketAnalyzer.ValidateOrders(orders, depthes)
+	if ok {
+		return orders, nil
+	}
+
+	newOrders := arbit.MarketAnalyzer.ArbitrageOrders(depthes, currBalance)
+	if newOrders == nil {
+		return nil, fmt.Errorf("Arbit orders destroyed")
+	}
+	return newOrders, nil
+}
+
 func LogOrder(order models.Order) {
-	log.Info("----------------- orders #" + string(order.Step) + " -------------------")
+	log.Info("----------------- orders #" + strconv.Itoa(order.Step) + " -------------------")
 	log.Info(" OrderID  : ", order.ClientOrderID)
 	log.Info(" Symbol   : ", order.Symbol.String())
 	log.Info(" Side     : ", order.Side)

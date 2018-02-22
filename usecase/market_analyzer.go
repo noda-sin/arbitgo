@@ -28,7 +28,7 @@ func (ma *MarketAnalyzer) ArbitrageOrders(depthList []*models.Depth, currBalance
 	var bestScore float64
 	var bestOrders []models.Order
 	for _, d := range GenerateRotationDepthList(ma.MainAsset, depthList) {
-		score, orders := GenerateOrderBook(ma.MainAsset, d, currBalance, ma.MaxQty, ma.Charge)
+		score, orders := ma.GenerateOrders(d, currBalance)
 		if orders == nil {
 			continue
 		}
@@ -115,7 +115,11 @@ func GenerateRotationDepthList(mainAsset models.Asset, depthList []*models.Depth
 	return rotateDepthList
 }
 
-func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth, currentBalance float64, maxLimitQty float64, charge float64) (float64, []models.Order) {
+func (ma *MarketAnalyzer) GenerateOrders(rotateDepth *models.RotationDepth, currentBalance float64) (float64, []models.Order) {
+	mainAsset := ma.MainAsset
+	maxLimitQty := ma.MaxQty
+	charge := ma.Charge
+
 	if rotateDepth == nil || len(rotateDepth.DepthList) == 0 {
 		return 0, nil
 	}
@@ -495,4 +499,26 @@ func (ma *MarketAnalyzer) SplitOrders(parentOrders []models.Order, qty float64) 
 	}
 
 	return newParentOrders, childOrders
+}
+
+func (ma *MarketAnalyzer) ValidateOrders(orders []models.Order, depthes []*models.Depth) bool {
+	for _, order := range orders {
+		for _, depth := range depthes {
+			if order.Symbol.String() == depth.Symbol.String() {
+				if order.Side == models.SideBuy {
+					ok := (depth.AskPrice <= order.Price) && (depth.AskQty >= order.Qty)
+					if ok == false {
+						return false
+					}
+				} else {
+					ok := (depth.BidPrice >= order.Price) && (depth.AskQty >= order.Qty)
+					if ok == false {
+						return false
+					}
+				}
+				break
+			}
+		}
+	}
+	return true
 }
