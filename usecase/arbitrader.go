@@ -5,7 +5,6 @@ import (
 
 	models "github.com/OopsMouse/arbitgo/models"
 	"github.com/OopsMouse/arbitgo/util"
-	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -33,26 +32,42 @@ func loginit() {
 
 func (arbit *Arbitrader) Run() {
 	loginit()
+	log.Info("Starting Arbitrader ....")
 
-	log.WithField("main asset", arbit.MainAsset).Info("start arbitgo")
+	mainAssetBalance, err := arbit.Exchange.GetBalance(arbit.MainAsset)
+	if err != nil {
+		log.WithError(err).Error("Failed to get balance of main asset.")
+		panic(err)
+	}
+
+	log.Info("----------------- params -----------------")
+	log.Info(" Main asset         : ", arbit.MainAsset)
+	log.Info(" Main asset balance : ", mainAssetBalance.Free)
+	log.Info(" Exchange charge    : ", arbit.MarketAnalyzer.Charge)
+	log.Info(" Threshold          : ", arbit.MarketAnalyzer.Threshold)
+	log.Info("------------------------------------------")
 
 	// Depthの変更通知登録
 	ch := make(chan []*models.Depth)
-	err := arbit.Exchange.OnUpdateDepthList(ch)
+
+	log.Info("Add event listener to receive updating depthes")
+
+	err = arbit.Exchange.OnUpdateDepthList(ch)
 	if err != nil {
-		log.WithError(err).Error("failed to add listener on update depth")
+		log.WithError(err).Error("Add event listener failed")
 		panic(err)
 	}
 
 	for {
-		// Main Assetの残高を取得
+		log.Info("Get main asset balance")
 		mainAssetBalance, err := arbit.Exchange.GetBalance(arbit.MainAsset)
-
 		if err != nil {
-			log.WithError(err).Error("failed to get balances")
-			time.Sleep(5 * time.Minute)
+			log.WithError(err).Error("Get main asset failed")
+			log.Info("Sleeping 5 second")
+			time.Sleep(5 * time.Second)
 			continue
 		}
+		log.Info(arbit.MainAsset, " : ", mainAssetBalance.Free)
 
 		for {
 			depthList := <-ch
@@ -64,62 +79,143 @@ func (arbit *Arbitrader) Run() {
 				continue
 			}
 
-			err = arbit.TradeOrder(orders, 1)
+			log.Info("Found arbit orders")
+			for i, order := range orders {
+				log.Info("----------------- orders ", i, " -----------------")
+				log.Info(" OrderID  : ", order.ClientOrderID)
+				log.Info(" Symbol   : ", order.Symbol.String())
+				log.Info(" Side     : ", order.Side)
+				log.Info(" Type     : ", order.OrderType)
+				log.Info(" Price    : ", order.Price)
+				log.Info(" Quantity : ", order.Qty)
+				log.Info("--------------------------------------------")
+			}
+
+			log.Info("Starting trade ....")
+
+			err = arbit.TradeOrder(orders)
 			if err != nil {
-				log.WithError(err).Error("failed trade")
+				log.WithError(err).Error("Trade failed")
 			}
 
 			arbit.LogBalances()
+
+			log.Info("Sleeping 5 second")
 			time.Sleep(5 * time.Second)
 			break
 		}
 	}
 }
 
-func (arbit *Arbitrader) TradeOrder(orders []*models.Order, confirmRetry int) error {
-	o := orders[0]
-	log.WithFields(log.Fields{
-		"symbol": o.Symbol.String(),
-		"side":   o.Side,
-		"type":   o.OrderType,
-		"price":  o.Price,
-		"qty":    o.Qty,
-	}).Info("challenge to order")
-	err := arbit.Exchange.SendOrder(o)
+func (arbit *Arbitrader) TradeOrder(orders []*models.Order) error {
+	order := orders[0]
+	log.Info("START - send order")
+	log.Info("----------------- order --------------------")
+	log.Info(" OrderID  : ", order.ClientOrderID)
+	log.Info(" Symbol   : ", order.Symbol.String())
+	log.Info(" Side     : ", order.Side)
+	log.Info(" Type     : ", order.OrderType)
+	log.Info(" Price    : ", order.Price)
+	log.Info(" Quantity : ", order.Qty)
+	log.Info("--------------------------------------------")
+
+	err := arbit.Exchange.SendOrder(order)
+	log.Info("END - send order")
+
 	if err != nil {
-		arbit.RecoveryOrder(o)
-		return err
+		log.WithError(err).Error("Send order failed")
+		return arbit.RecoveryOrder(order)
 	}
-	for i := 0; i < confirmRetry; i++ {
-		executedQty, err := arbit.Exchange.ConfirmOrder(o)
+
+	executedTotalQty := 0.0
+	waitingTotalQty := order.Qty
+
+	for i := 0; i < 10; i++ {
+		log.Info("START - confirm order")
+		log.Info("OrderID: ", order.ClientOrderID)
+		var executedQty float64
+		executedQty, err = arbit.Exchange.ConfirmOrder(order)
+		log.Info("END - confirm order")
 		if err != nil {
-			arbit.RecoveryOrder(o)
-			return err
+			log.WithError(err).Error("Confirm order failed")
+			continue
 		}
-		if executedQty > 0 &&
-			o.Qty == executedQty {
-			if len(orders) == 1 { // FIN
-				return nil
-			}
-			return arbit.TradeOrder(orders[1:], confirmRetry)
+
+		log.Info("------------------------------------------")
+		log.Info("Executed total quantity : ", executedTotalQty, " --> ", executedTotalQty+executedQty)
+		log.Info("Waiting total quantity  : ", waitingTotalQty, " --> ", waitingTotalQty-executedQty)
+		log.Info("------------------------------------------")
+
+		executedTotalQty += executedQty
+		waitingTotalQty -= executedQty
+
+		if waitingTotalQty <= 0 {
+			log.Info("Success order about entire quantity")
+			break
+		} else if executedTotalQty > 0 && executedTotalQty > order.Symbol.MinQty {
+			// executedTotalQty = 0
+			// 別トレーディングとして注文
 		}
+
+		log.Info("Sleeping 10 second")
+		time.Sleep(10 * time.Second)
 	}
-	arbit.RecoveryOrder(o)
-	return errors.Errorf("failed order")
+
+	if waitingTotalQty > 0 {
+		log.Warn("Order did not end within time limit")
+		log.Info("START - Cancel order")
+		log.Info("----------------- order --------------------")
+		log.Info(" OrderID  : ", order.ClientOrderID)
+		log.Info(" Symbol   : ", order.Symbol.String())
+		log.Info(" Side     : ", order.Side)
+		log.Info(" Type     : ", order.OrderType)
+		log.Info(" Price    : ", order.Price)
+		log.Info(" Quantity : ", order.Qty)
+		log.Info("--------------------------------------------")
+		err := arbit.Exchange.CancelOrder(order)
+		log.Info("END - Cancel order")
+
+		if err != nil {
+			log.WithError(err).Error("Cancel order failed")
+			log.Error("Please confirm and manualy cancel order")
+			panic(err)
+		}
+
+		return arbit.RecoveryOrder(&models.Order{
+			Symbol:    order.Symbol,
+			Side:      order.Side,
+			OrderType: order.OrderType,
+			Price:     order.Price,
+			Qty:       waitingTotalQty,
+		})
+	}
+
+	if len(orders) == 1 { // FIN
+		return nil
+	}
+
+	return arbit.TradeOrder(orders[1:])
 }
 
-func (arbit *Arbitrader) RecoveryOrder(order *models.Order) {
-	log.Info("try to recovery")
+func (arbit *Arbitrader) RecoveryOrder(order *models.Order) error {
 	var currentAsset models.Asset
 	if order.Side == models.SideBuy {
 		currentAsset = order.Symbol.QuoteAsset
 	} else {
 		currentAsset = order.Symbol.BaseAsset
 	}
+
+	log.Info("Current asset : ", currentAsset)
+
 	if currentAsset == arbit.MainAsset {
+		log.Info("Current asset is same main asset")
+		log.Info("Recovery is unnecessary")
+
 		// nothing to do
-		return
+		return nil
 	}
+
+	log.Info("Finding orders to recovery")
 
 	orders, err := arbit.MarketAnalyzer.ForceChangeOrders(
 		arbit.Exchange.GetSymbols(),
@@ -128,34 +224,54 @@ func (arbit *Arbitrader) RecoveryOrder(order *models.Order) {
 	)
 
 	if err != nil {
-		log.WithError(err).Error("failed to recovery")
-		log.Error("please confirm and manualy recovery")
+		log.WithError(err).Error("Find orders to recovery failed")
+		log.Error("Please confirm and manualy recovery !!!")
 
 		panic(err)
 	}
 
+	log.Info("Found orders to recovery")
+	for i, order := range orders {
+		log.Info("----------------- orders ", i, " -----------------")
+		log.Info(" OrderID  : ", order.ClientOrderID)
+		log.Info(" Symbol   : ", order.Symbol.String())
+		log.Info(" Side     : ", order.Side)
+		log.Info(" Type     : ", order.OrderType)
+		log.Info(" Quantity : ", order.Qty)
+		log.Info("--------------------------------------------")
+	}
+
+	log.Info("Starting recovery ....")
+
 	for _, order := range orders {
-		log.WithFields(log.Fields{
-			"symbol": order.Symbol.String(),
-			"side":   order.Side,
-			"type":   order.OrderType,
-			"qty":    order.Qty,
-		}).Info("recovery order")
 		var currentAsset models.Asset
 		if order.Side == models.SideBuy {
 			currentAsset = order.Symbol.QuoteAsset
 		} else {
 			currentAsset = order.Symbol.BaseAsset
 		}
-		currentBalance, err := arbit.Exchange.GetBalance(currentAsset)
-		if err != nil {
-			log.WithError(err).Error("failed to recovery")
-			log.Error("please confirm and manualy recovery")
 
-			panic(err)
-		}
+		log.Info("Check balance of ", currentAsset)
+
+		currentBalance, _ := arbit.Exchange.GetBalance(currentAsset)
+
+		log.Info(currentAsset, " : ", currentBalance.Free)
+
 		order.Qty = util.Floor(currentBalance.Free, order.Symbol.StepSize)
+
+		log.Info("START - send recovery order")
+		log.Info("----------------- order --------------------")
+		log.Info(" OrderID  : ", order.ClientOrderID)
+		log.Info(" Symbol   : ", order.Symbol.String())
+		log.Info(" Side     : ", order.Side)
+		log.Info(" Type     : ", order.OrderType)
+		log.Info(" Quantity : ", order.Qty)
+		log.Info("--------------------------------------------")
+
 		err = arbit.Exchange.SendOrder(order)
+
+		log.Info("END - send recovery order")
+
 		if err != nil {
 			log.WithError(err).Error("failed to recovery")
 			log.Error("please confirm and manualy recovery")
@@ -163,6 +279,7 @@ func (arbit *Arbitrader) RecoveryOrder(order *models.Order) {
 			panic(err)
 		}
 	}
+	return nil
 }
 
 func (arbit *Arbitrader) LogBalances() {
@@ -170,7 +287,11 @@ func (arbit *Arbitrader) LogBalances() {
 	if err != nil {
 		return
 	}
+	log.Info("----------------- Balances -----------------")
+
 	for _, balance := range balances {
-		log.WithField(string(balance.Asset), balance.Total).Info("report balance")
+		log.Info(balance.Asset, " : ", balance.Total)
 	}
+
+	log.Info("--------------------------------------------")
 }
