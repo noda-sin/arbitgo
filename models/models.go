@@ -54,6 +54,7 @@ func (symbs Symbols) Swap(i, j int) {
 }
 
 type Order struct {
+	Step          int
 	Symbol        Symbol
 	OrderType     OrderType
 	Price         float64

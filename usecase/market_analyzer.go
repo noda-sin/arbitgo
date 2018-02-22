@@ -3,8 +3,8 @@ package usecase
 import (
 	models "github.com/OopsMouse/arbitgo/models"
 	"github.com/OopsMouse/arbitgo/util"
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"github.com/rs/xid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -25,20 +25,21 @@ func NewMarketAnalyzer(mainAsset models.Asset, charge float64, maxqty float64, t
 }
 
 func (ma *MarketAnalyzer) ArbitrageOrders(depthList []*models.Depth, currBalance float64) []models.Order {
-	var bastScore float64
+	var bestScore float64
 	var bestOrders []models.Order
 	for _, d := range GenerateRotationDepthList(ma.MainAsset, depthList) {
 		score, orders := GenerateOrderBook(ma.MainAsset, d, currBalance, ma.MaxQty, ma.Charge)
 		if orders == nil {
 			continue
 		}
-		if score > bastScore {
+		if score > bestScore {
+			bestScore = score
 			bestOrders = orders
 		}
 	}
 
 	if bestOrders == nil ||
-		bastScore <= ma.Threshold {
+		bestScore <= ma.Threshold {
 		return nil
 	}
 
@@ -314,30 +315,33 @@ func GenerateOrderBook(mainAsset models.Asset, rotateDepth *models.RotationDepth
 
 	orders := []models.Order{}
 	orders = append(orders, models.Order{
+		Step:          len(orders) + 1,
 		Symbol:        symbol1,
 		OrderType:     models.TypeLimit,
 		Price:         price1,
 		Side:          side1,
 		Qty:           qty1,
-		ClientOrderID: uuid.New().String(),
+		ClientOrderID: xid.New().String(),
 	})
 
 	orders = append(orders, models.Order{
+		Step:          len(orders) + 1,
 		Symbol:        symbol2,
 		OrderType:     models.TypeLimit,
 		Price:         price2,
 		Side:          side2,
 		Qty:           qty2,
-		ClientOrderID: uuid.New().String(),
+		ClientOrderID: xid.New().String(),
 	})
 
 	orders = append(orders, models.Order{
+		Step:          len(orders) + 1,
 		Symbol:        symbol3,
 		OrderType:     models.TypeLimit,
 		Price:         price3,
 		Side:          side3,
 		Qty:           qty3,
-		ClientOrderID: uuid.New().String(),
+		ClientOrderID: xid.New().String(),
 	})
 
 	return score, orders
@@ -350,18 +354,20 @@ func (ma *MarketAnalyzer) ForceChangeOrders(symbols []models.Symbol, from models
 	for _, s := range symbols {
 		if s.QuoteAsset == from && s.BaseAsset == to {
 			orders = append(orders, models.Order{
+				Step:          len(orders) + 1,
 				Symbol:        s,
 				OrderType:     models.TypeMarket,
 				Side:          models.SideBuy,
-				ClientOrderID: uuid.New().String(),
+				ClientOrderID: xid.New().String(),
 			})
 			return orders, nil
 		} else if s.QuoteAsset == to && s.BaseAsset == from {
 			orders = append(orders, models.Order{
+				Step:          len(orders) + 1,
 				Symbol:        s,
 				OrderType:     models.TypeMarket,
 				Side:          models.SideSell,
-				ClientOrderID: uuid.New().String(),
+				ClientOrderID: xid.New().String(),
 			})
 			return orders, nil
 		}
@@ -382,58 +388,66 @@ func (ma *MarketAnalyzer) ForceChangeOrders(symbols []models.Symbol, from models
 		for _, j := range symbolsRelatedTo {
 			if i.QuoteAsset == from && i.BaseAsset == j.BaseAsset {
 				orders = append(orders, models.Order{
+					Step:          len(orders) + 1,
 					Symbol:        i,
 					OrderType:     models.TypeMarket,
 					Side:          models.SideBuy,
-					ClientOrderID: uuid.New().String(),
+					ClientOrderID: xid.New().String(),
 				})
 				orders = append(orders, models.Order{
+					Step:          len(orders) + 1,
 					Symbol:        j,
 					OrderType:     models.TypeMarket,
 					Side:          models.SideSell,
-					ClientOrderID: uuid.New().String(),
+					ClientOrderID: xid.New().String(),
 				})
 				return orders, nil
 			} else if i.QuoteAsset == from && i.BaseAsset == j.QuoteAsset {
 				orders = append(orders, models.Order{
+					Step:          len(orders) + 1,
 					Symbol:        i,
 					OrderType:     models.TypeMarket,
 					Side:          models.SideBuy,
-					ClientOrderID: uuid.New().String(),
+					ClientOrderID: xid.New().String(),
 				})
 				orders = append(orders, models.Order{
+					Step:          len(orders) + 1,
 					Symbol:        j,
 					OrderType:     models.TypeMarket,
 					Side:          models.SideBuy,
-					ClientOrderID: uuid.New().String(),
+					ClientOrderID: xid.New().String(),
 				})
 				return orders, nil
 			} else if i.BaseAsset == from && i.QuoteAsset == j.BaseAsset {
 				orders = append(orders, models.Order{
+					Step:          len(orders) + 1,
 					Symbol:        i,
 					OrderType:     models.TypeMarket,
 					Side:          models.SideSell,
-					ClientOrderID: uuid.New().String(),
+					ClientOrderID: xid.New().String(),
 				})
 				orders = append(orders, models.Order{
+					Step:          len(orders) + 1,
 					Symbol:        j,
 					OrderType:     models.TypeMarket,
 					Side:          models.SideSell,
-					ClientOrderID: uuid.New().String(),
+					ClientOrderID: xid.New().String(),
 				})
 				return orders, nil
 			} else if i.BaseAsset == from && i.QuoteAsset == j.QuoteAsset {
 				orders = append(orders, models.Order{
+					Step:          len(orders) + 1,
 					Symbol:        i,
 					OrderType:     models.TypeMarket,
 					Side:          models.SideSell,
-					ClientOrderID: uuid.New().String(),
+					ClientOrderID: xid.New().String(),
 				})
 				orders = append(orders, models.Order{
+					Step:          len(orders) + 1,
 					Symbol:        j,
 					OrderType:     models.TypeMarket,
 					Side:          models.SideBuy,
-					ClientOrderID: uuid.New().String(),
+					ClientOrderID: xid.New().String(),
 				})
 				return orders, nil
 			}
@@ -445,40 +459,39 @@ func (ma *MarketAnalyzer) ForceChangeOrders(symbols []models.Symbol, from models
 func (ma *MarketAnalyzer) SplitOrders(parentOrders []models.Order, qty float64) ([]models.Order, []models.Order) {
 	newParentOrders := []models.Order{}
 	childOrders := []models.Order{}
-	nextQty := qty
-	var pravious *models.Order
+	rate := qty / parentOrders[0].Qty
 
 	for i, o := range parentOrders {
-		if pravious != nil {
-			nextQty = (1 - ma.Charge) * nextQty
-			if o.Side == models.SideBuy {
-				nextQty = util.Floor(nextQty/pravious.Price, o.Symbol.StepSize)
-			} else {
-				nextQty = util.Floor((nextQty*pravious.Price)/o.Price, o.Symbol.StepSize)
-			}
-		}
-
-		newParentOrders = append(newParentOrders, models.Order{
-			Symbol:        o.Symbol,
-			OrderType:     o.OrderType,
-			Price:         o.Price,
-			Side:          o.Side,
-			Qty:           o.Qty - nextQty,
-			ClientOrderID: o.ClientOrderID,
-		})
-
-		if i > 0 {
-			childOrders = append(childOrders, models.Order{
+		if i == 0 {
+			newParentOrders = append(newParentOrders, models.Order{
+				Step:          o.Step,
 				Symbol:        o.Symbol,
 				OrderType:     o.OrderType,
 				Price:         o.Price,
 				Side:          o.Side,
-				Qty:           nextQty,
+				Qty:           o.Qty - qty,
 				ClientOrderID: o.ClientOrderID,
 			})
+		} else {
+			newParentOrders = append(newParentOrders, models.Order{
+				Step:          o.Step,
+				Symbol:        o.Symbol,
+				OrderType:     o.OrderType,
+				Price:         o.Price,
+				Side:          o.Side,
+				Qty:           util.Floor((1-rate)*o.Qty, o.Symbol.StepSize),
+				ClientOrderID: o.ClientOrderID,
+			})
+			childOrders = append(childOrders, models.Order{
+				Step:          o.Step,
+				Symbol:        o.Symbol,
+				OrderType:     o.OrderType,
+				Price:         o.Price,
+				Side:          o.Side,
+				Qty:           util.Floor(rate*o.Qty, o.Symbol.StepSize),
+				ClientOrderID: xid.New().String(),
+			})
 		}
-
-		pravious = &o
 	}
 
 	return newParentOrders, childOrders
