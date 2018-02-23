@@ -3,6 +3,8 @@ package usecase
 import (
 	"strconv"
 
+	"github.com/orcaman/concurrent-map"
+
 	models "github.com/OopsMouse/arbitgo/models"
 	"github.com/OopsMouse/arbitgo/util"
 	"github.com/pkg/errors"
@@ -11,18 +13,20 @@ import (
 )
 
 type MarketAnalyzer struct {
-	MainAsset models.Asset
-	Charge    float64
-	MaxQty    float64
-	Threshold float64
+	MainAsset  models.Asset
+	Charge     float64
+	MaxQty     float64
+	Threshold  float64
+	DepthCache cmap.ConcurrentMap
 }
 
 func NewMarketAnalyzer(mainAsset models.Asset, charge float64, maxqty float64, threshold float64) MarketAnalyzer {
 	return MarketAnalyzer{
-		MainAsset: mainAsset,
-		Charge:    charge,
-		MaxQty:    maxqty,
-		Threshold: threshold,
+		MainAsset:  mainAsset,
+		Charge:     charge,
+		MaxQty:     maxqty,
+		Threshold:  threshold,
+		DepthCache: cmap.New(),
 	}
 }
 

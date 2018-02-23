@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	models "github.com/OopsMouse/arbitgo/models"
@@ -205,18 +206,6 @@ func (bi Binance) GetSymbols() []models.Symbol {
 	return bi.Symbols
 }
 
-func (bi Binance) SetDepth(symbol models.Symbol, depth *models.Depth) {
-	bi.DepthCache.Set(symbol.String(), depth)
-}
-
-func (bi Binance) GetDepthList() ([]*models.Depth, error) {
-	depthList := []*models.Depth{}
-	for _, v := range bi.DepthCache.Items() {
-		depthList = append(depthList, v.(*models.Depth))
-	}
-	return depthList, nil
-}
-
 func (bi Binance) GetDepth(symbol models.Symbol) (*models.Depth, error) {
 	request := binance.OrderBookRequest{
 		Symbol: symbol.String(),
@@ -230,7 +219,6 @@ func (bi Binance) GetDepth(symbol models.Symbol) (*models.Depth, error) {
 	if err != nil {
 		return nil, err
 	}
-	bi.SetDepth(symbol, depth)
 	return depth, nil
 }
 
@@ -271,63 +259,86 @@ func GetDepthInOrderBook(symbol models.Symbol, orderBook *binance.OrderBook, quo
 	}, nil
 }
 
-func (bi Binance) OnUpdateDepthList(recv chan []*models.Depth) error {
-	defer func() {
-		if err := recover(); err != nil {
-			fmt.Println("recover error and retry to exec func", err)
-			bi.OnUpdateDepthList(recv)
-		}
-	}()
+func (bi Binance) connectWebsocket(symbol models.Symbol) (chan *binance.OrderBook, chan struct{}, error) {
+	var obch chan *binance.OrderBook
+	var done chan struct{}
+	req := binance.OrderBookRequest{
+		Symbol: symbol.String(),
+		Level:  20,
+	}
+	err := util.BackoffRetry(5, func() error {
+		r, d, err := bi.Api.OrderBookWebsocket(req)
+		obch = r
+		done = d
+		return err
+	})
+	return obch, done, err
+}
 
-	for _, symbol := range bi.Symbols {
+func (bi Binance) GetDepthWebsocket() (chan *models.Depth, chan bool) {
+	m := new(sync.Mutex)
+	stopping := false
+	dch := make(chan *models.Depth)
+	websockClose := make(chan struct{})
+
+	for _, symbol := range bi.GetSymbols() {
 		go func(symbol models.Symbol) {
-			request := binance.OrderBookRequest{
-				Symbol: symbol.String(),
-				Level:  20,
-			}
-
 			for {
-				var obch chan *binance.OrderBook
-				var done chan struct{}
-				err := util.BackoffRetry(5, func() error {
-					r, d, err := bi.Api.OrderBookWebsocket(request)
-					obch = r
-					done = d
-					return err
-				})
-
-				if err != nil {
-					fmt.Println("retry connect", err)
-					continue
+				for stopping {
 				}
 
-				for {
-					select {
-					case orderbook := <-obch:
-						depth, err := GetDepthInOrderBook(
-							symbol,
-							orderbook,
-							bi.QuoteAssetList,
-						)
-						if err != nil {
-							fmt.Printf("%s, convert error, order book to depth, last update id is %#v\n", err, orderbook.LastUpdateID)
-							continue
-						}
-						bi.SetDepth(symbol, depth)
-						depthList, err := bi.GetDepthList()
-						if err != nil {
-							fmt.Printf("get market error")
-							continue
-						}
-						recv <- depthList
-					case <-done:
-						break
+				go func(symbol models.Symbol) {
+					defer func() {
+						websockClose <- struct{}{}
+					}()
+
+					if stopping {
+						return
 					}
-				}
+
+					obch, done, err := bi.connectWebsocket(symbol)
+
+					if err != nil {
+						return
+					}
+
+					for {
+						if stopping {
+							return
+						}
+
+						select {
+						case orderbook := <-obch:
+							depth, _ := GetDepthInOrderBook(
+								symbol,
+								orderbook,
+								bi.QuoteAssetList,
+							)
+							dch <- depth
+						case <-done:
+							return
+						default:
+						}
+					}
+				}(symbol)
+				<-websockClose
 			}
 		}(symbol)
 	}
-	return nil
+
+	stopch := make(chan bool)
+
+	go func() {
+		defer close(stopch)
+		for {
+			s := <-stopch
+			m.Lock()
+			stopping = s
+			m.Unlock()
+		}
+	}()
+
+	return dch, stopch
 }
 
 func (bi Binance) SendOrder(order *models.Order) error {

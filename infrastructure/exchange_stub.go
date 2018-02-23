@@ -73,14 +73,6 @@ func (ex ExchangeStub) GetSymbols() []models.Symbol {
 	return ex.Exchange.GetSymbols()
 }
 
-func (ex ExchangeStub) GetDepthList() ([]*models.Depth, error) {
-	return ex.Exchange.GetDepthList()
-}
-
-func (ex ExchangeStub) OnUpdateDepthList(recv chan []*models.Depth) error {
-	return ex.Exchange.OnUpdateDepthList(recv)
-}
-
 func (ex ExchangeStub) SendOrder(order *models.Order) error {
 	return nil
 }

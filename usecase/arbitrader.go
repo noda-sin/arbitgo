@@ -49,16 +49,9 @@ func (arbit *Arbitrader) Run() {
 	log.Info(" Threshold          : ", arbit.MarketAnalyzer.Threshold)
 	log.Info("------------------------------------------")
 
-	// Depthの変更通知登録
-	ch := make(chan []*models.Depth)
-
 	log.Info("Add event listener to receive updating depthes")
 
-	err = arbit.Exchange.OnUpdateDepthList(ch)
-	if err != nil {
-		log.WithError(err).Error("Add event listener failed")
-		panic(err)
-	}
+	dch, stop := arbit.Exchange.GetDepthWebsocket()
 
 	for {
 		log.Info("Get main asset balance")
@@ -72,35 +65,59 @@ func (arbit *Arbitrader) Run() {
 		log.Info(arbit.MainAsset, " : ", mainAssetBalance.Free)
 
 		for {
-			depthList := <-ch
+			depth := <-dch
+			arbit.SetDepth(depth.Symbol, depth)
+
 			orders := arbit.MarketAnalyzer.ArbitrageOrders(
-				depthList,
+				arbit.GetDepthList(),
 				mainAssetBalance.Free,
 			)
 			if orders == nil {
 				continue
 			}
 
-			log.Info("Found arbit orders")
-			LogOrders(orders)
+			success := func() bool {
+				stop <- true
+				defer func() {
+					stop <- false
+				}()
 
-			log.Info("Validate orders")
-			orders, err := arbit.ValidateOrders(orders, mainAssetBalance.Free)
-			if err != nil {
-				log.WithError(err).Warn("Validate orders failed")
-				continue
+				log.Info("Found arbit orders")
+				LogOrders(orders)
+
+				log.Info("Validate orders")
+				orders, err := arbit.ValidateOrders(orders, mainAssetBalance.Free)
+				if err != nil {
+					log.WithError(err).Warn("Validate orders failed")
+					return false
+				}
+
+				log.Info("Starting trade ....")
+
+				<-arbit.TradeOrder(orders)
+
+				arbit.LogBalances()
+
+				time.Sleep(5 * time.Second)
+				return true
+			}()
+			if success {
+				break
 			}
-
-			log.Info("Starting trade ....")
-
-			<-arbit.TradeOrder(orders)
-
-			arbit.LogBalances()
-
-			time.Sleep(5 * time.Second)
-			break
 		}
 	}
+}
+
+func (arbit *Arbitrader) SetDepth(symbol models.Symbol, depth *models.Depth) {
+	arbit.DepthCache.Set(symbol.String(), depth)
+}
+
+func (arbit *Arbitrader) GetDepthList() []*models.Depth {
+	depthList := []*models.Depth{}
+	for _, v := range arbit.DepthCache.Items() {
+		depthList = append(depthList, v.(*models.Depth))
+	}
+	return depthList
 }
 
 func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
@@ -306,6 +323,7 @@ func (arbit *Arbitrader) ValidateOrders(orders []models.Order, currBalance float
 				errch <- err
 				return
 			}
+			arbit.SetDepth(depth.Symbol, depth)
 			depch <- depth
 		}(order)
 	}
