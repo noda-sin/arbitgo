@@ -275,58 +275,107 @@ func (bi Binance) connectWebsocket(symbol models.Symbol) (chan *binance.OrderBoo
 	return obch, done, err
 }
 
+// func (bi Binance) GetDepthWebsocket() (chan *models.Depth, chan bool) {
+// 	m := new(sync.Mutex)
+// 	stopping := false
+// 	dch := make(chan *models.Depth)
+// 	websockClose := make(chan struct{})
+
+// 	for _, symbol := range bi.GetSymbols() {
+// 		go func(symbol models.Symbol) {
+// 			for {
+// 				for stopping {
+// 				}
+
+// 				go func(symbol models.Symbol) {
+// 					defer func() {
+// 						websockClose <- struct{}{}
+// 					}()
+
+// 					if stopping {
+// 						return
+// 					}
+
+// 					obch, done, err := bi.connectWebsocket(symbol)
+
+// 					if err != nil {
+// 						return
+// 					}
+
+// 					for {
+// 						if stopping {
+// 							return
+// 						}
+
+// 						select {
+// 						case orderbook := <-obch:
+// 							depth, _ := GetDepthInOrderBook(
+// 								symbol,
+// 								orderbook,
+// 								bi.QuoteAssetList,
+// 							)
+// 							dch <- depth
+// 						case <-done:
+// 							return
+// 						default:
+// 						}
+// 					}
+// 				}(symbol)
+// 				<-websockClose
+// 			}
+// 		}(symbol)
+// 	}
+
+// 	stopch := make(chan bool)
+
+// 	go func() {
+// 		defer close(stopch)
+// 		for {
+// 			s := <-stopch
+// 			m.Lock()
+// 			stopping = s
+// 			m.Unlock()
+// 		}
+// 	}()
+
+// 	return dch, stopch
+// }
+
 func (bi Binance) GetDepthWebsocket() (chan *models.Depth, chan bool) {
 	m := new(sync.Mutex)
 	stopping := false
-	dch := make(chan *models.Depth)
-	websockClose := make(chan struct{})
-
-	for _, symbol := range bi.GetSymbols() {
-		go func(symbol models.Symbol) {
-			for {
-				for stopping {
-				}
-
-				go func(symbol models.Symbol) {
-					defer func() {
-						websockClose <- struct{}{}
-					}()
-
-					if stopping {
-						return
-					}
-
-					obch, done, err := bi.connectWebsocket(symbol)
-
-					if err != nil {
-						return
-					}
-
-					for {
-						if stopping {
-							return
-						}
-
-						select {
-						case orderbook := <-obch:
-							depth, _ := GetDepthInOrderBook(
-								symbol,
-								orderbook,
-								bi.QuoteAssetList,
-							)
-							dch <- depth
-						case <-done:
-							return
-						default:
-						}
-					}
-				}(symbol)
-				<-websockClose
-			}
-		}(symbol)
-	}
-
 	stopch := make(chan bool)
+	dch := make(chan *models.Depth)
+
+	depthReqChan := make(chan models.Symbol)
+
+	go func() {
+		for {
+			if stopping {
+				continue
+			}
+
+			select {
+			case symbol := <-depthReqChan:
+				depth, err := bi.GetDepth(symbol)
+				time.Sleep(1 / 1200 * time.Minute)
+				if err != nil {
+					continue
+				}
+				dch <- depth
+			}
+		}
+	}()
+
+	go func() {
+		symbols := bi.GetSymbols()
+		for {
+			for _, symbol := range symbols {
+				depthReqChan <- symbol
+				time.Sleep(1 / 1200 * time.Minute)
+			}
+		}
+	}()
 
 	go func() {
 		defer close(stopch)

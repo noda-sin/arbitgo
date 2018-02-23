@@ -3,6 +3,7 @@ package usecase
 import (
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	models "github.com/OopsMouse/arbitgo/models"
@@ -67,7 +68,6 @@ func (arbit *Arbitrader) Run() {
 		for {
 			depth := <-dch
 			arbit.SetDepth(depth.Symbol, depth)
-
 			orders := arbit.MarketAnalyzer.ArbitrageOrders(
 				arbit.GetDepthList(),
 				mainAssetBalance.Free,
@@ -316,30 +316,23 @@ func (arbit *Arbitrader) ValidateOrders(orders []models.Order, currBalance float
 	defer close(depch)
 	defer close(errch)
 
+	wg := &sync.WaitGroup{}
+
+	m := new(sync.Mutex)
+
 	for _, order := range orders {
+		wg.Add(1)
 		go func(order models.Order) {
-			depth, err := arbit.Exchange.GetDepth(order.Symbol)
-			if err != nil {
-				errch <- err
-				return
-			}
+			depth, _ := arbit.Exchange.GetDepth(order.Symbol)
 			arbit.SetDepth(depth.Symbol, depth)
-			depch <- depth
+			m.Lock()
+			depthes = append(depthes, depth)
+			m.Unlock()
+			wg.Done()
 		}(order)
 	}
 
-	for {
-		select {
-		case depth := <-depch:
-			depthes = append(depthes, depth)
-		case err := <-errch:
-			return nil, err
-		}
-
-		if len(depthes) == len(orders) {
-			break
-		}
-	}
+	wg.Wait()
 
 	ok := arbit.MarketAnalyzer.ValidateOrders(orders, depthes)
 	if ok == true {
