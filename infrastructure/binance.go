@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -18,12 +17,12 @@ import (
 )
 
 type Binance struct {
-	Api            binance.Binance
-	QuoteAssetList []models.Asset
-	Symbols        []models.Symbol
-	DepthCache     cmap.ConcurrentMap
-	OrderRetry     int
-	UseWebsocket   bool
+	Api          binance.Binance
+	QuoteAsset   *util.Set
+	Symbols      []models.Symbol
+	DepthCache   cmap.ConcurrentMap
+	OrderRetry   int
+	UseWebsocket bool
 }
 
 func NewBinance(apikey string, secret string) Binance {
@@ -117,48 +116,15 @@ func NewBinance(apikey string, secret string) Binance {
 		symbols = append(symbols, *symbol)
 	}
 
-	// symbols = FilterByTopVolume(symbols, 30)
-
-	quoteAssetList := []models.Asset{}
-	for _, s := range quoteAssetSet.ToSlice() {
-		quoteAssetList = append(quoteAssetList, models.Asset(s))
-	}
-
 	ex := Binance{
-		Api:            b,
-		QuoteAssetList: quoteAssetList,
-		Symbols:        symbols,
-		DepthCache:     cmap.New(),
-		OrderRetry:     10,
-		UseWebsocket:   true,
+		Api:          b,
+		QuoteAsset:   quoteAssetSet,
+		Symbols:      symbols,
+		DepthCache:   cmap.New(),
+		OrderRetry:   10,
+		UseWebsocket: true,
 	}
 	return ex
-}
-
-func FilterByTopVolume(symbols []models.Symbol, top int) []models.Symbol {
-	quoteAssetList := util.NewSet()
-	symbolsByQuote := map[models.Asset][]models.Symbol{}
-	for _, s := range symbols {
-		quoteAssetList.Append(string(s.QuoteAsset))
-		symbolsByQuote[s.QuoteAsset] = append(symbolsByQuote[s.QuoteAsset], s)
-	}
-
-	filteredAssetList := util.NewSet()
-	for _, v := range symbolsByQuote {
-		sort.Sort(models.Symbols(v))
-		for i := 0; i < len(v) && i < top; i++ {
-			filteredAssetList.Append(string(v[i].BaseAsset))
-		}
-	}
-
-	filteredSymbols := []models.Symbol{}
-	for _, s := range symbols {
-		if quoteAssetList.Include(string(s.BaseAsset)) ||
-			filteredAssetList.Include(string(s.BaseAsset)) {
-			filteredSymbols = append(filteredSymbols, s)
-		}
-	}
-	return filteredSymbols
 }
 
 func (bi Binance) GetCharge() float64 {
@@ -217,14 +183,14 @@ func (bi Binance) GetDepth(symbol models.Symbol) (*models.Depth, error) {
 	if err != nil {
 		return nil, err
 	}
-	depth, err := getDepthInOrderBook(symbol, book, bi.QuoteAssetList)
+	depth, err := getDepthInOrderBook(symbol, book)
 	if err != nil {
 		return nil, err
 	}
 	return depth, nil
 }
 
-func getDepthInOrderBook(symbol models.Symbol, orderBook *binance.OrderBook, quoteAssetList []models.Asset) (*models.Depth, error) {
+func getDepthInOrderBook(symbol models.Symbol, orderBook *binance.OrderBook) (*models.Depth, error) {
 	if len(orderBook.Bids) < 1 ||
 		len(orderBook.Asks) < 1 {
 		return nil, errors.Errorf("Bids or Asks length is empty")
@@ -278,13 +244,13 @@ func (bi Binance) connectWebsocket(symbol models.Symbol) (chan *binance.OrderBoo
 	return obch, done, err
 }
 
-func (bi Binance) getDepthOnUpdateWebsocket() (chan *models.Depth, chan bool) {
+func (bi Binance) getDepthOnUpdateWebsocket(symbols []models.Symbol) (chan *models.Depth, chan bool) {
 	m := new(sync.Mutex)
 	stopping := false
 	dch := make(chan *models.Depth)
 	websockClose := make(chan struct{})
 
-	for _, symbol := range bi.GetSymbols() {
+	for _, symbol := range symbols {
 		go func(symbol models.Symbol) {
 			for {
 				for stopping {
@@ -315,7 +281,6 @@ func (bi Binance) getDepthOnUpdateWebsocket() (chan *models.Depth, chan bool) {
 							depth, _ := getDepthInOrderBook(
 								symbol,
 								orderbook,
-								bi.QuoteAssetList,
 							)
 							dch <- depth
 						case <-done:
@@ -344,7 +309,7 @@ func (bi Binance) getDepthOnUpdateWebsocket() (chan *models.Depth, chan bool) {
 	return dch, stopch
 }
 
-func (bi Binance) getDepthOnUpdateRequest() (chan *models.Depth, chan bool) {
+func (bi Binance) getDepthOnUpdateRequest(symbols []models.Symbol) (chan *models.Depth, chan bool) {
 	m := new(sync.Mutex)
 	stopping := false
 	stopch := make(chan bool)
@@ -371,7 +336,6 @@ func (bi Binance) getDepthOnUpdateRequest() (chan *models.Depth, chan bool) {
 	}()
 
 	go func() {
-		symbols := bi.GetSymbols()
 		for {
 			for _, symbol := range symbols {
 				depthReqChan <- symbol
@@ -393,11 +357,43 @@ func (bi Binance) getDepthOnUpdateRequest() (chan *models.Depth, chan bool) {
 	return dch, stopch
 }
 
-func (bi Binance) GetDepthOnUpdate() (chan *models.Depth, chan bool) {
-	if bi.UseWebsocket {
-		return bi.getDepthOnUpdateWebsocket()
+func (bi Binance) getQuoteToQuotePairSymbols(symbols []models.Symbol) []models.Symbol {
+	ret := []models.Symbol{}
+	for _, s := range symbols {
+		if bi.QuoteAsset.Include(string(s.BaseAsset)) &&
+			bi.QuoteAsset.Include(string(s.QuoteAsset)) {
+			ret = append(ret, s)
+		}
 	}
-	return bi.getDepthOnUpdateRequest()
+	return ret
+}
+
+func (bi Binance) getQuoteToBasePairSymbols(symbols []models.Symbol) []models.Symbol {
+	ret := []models.Symbol{}
+	for _, s := range symbols {
+		if !bi.QuoteAsset.Include(string(s.BaseAsset)) {
+			ret = append(ret, s)
+		}
+	}
+	return ret
+}
+
+func (bi Binance) GetDepthOnUpdate() chan *models.Depth {
+	dch := make(chan *models.Depth)
+	symbols := bi.GetSymbols()
+	r, _ := bi.getDepthOnUpdateRequest(bi.getQuoteToQuotePairSymbols(symbols))
+	w, _ := bi.getDepthOnUpdateWebsocket(bi.getQuoteToBasePairSymbols(symbols))
+	go func() {
+		for {
+			select {
+			case d := <-r:
+				dch <- d
+			case d := <-w:
+				dch <- d
+			}
+		}
+	}()
+	return dch
 }
 
 func (bi Binance) SendOrder(order *models.Order) error {

@@ -3,9 +3,12 @@ package util
 import (
 	"path"
 	"runtime"
+	"strconv"
 	"time"
 
+	"github.com/OopsMouse/arbitgo/models"
 	"github.com/jpillora/backoff"
+	log "github.com/sirupsen/logrus"
 )
 
 func Index(vs []string, t string) int {
@@ -111,4 +114,26 @@ func BackoffRetry(retry int, op Operation) error {
 
 func Floor(a float64, b float64) float64 {
 	return float64(int(a/b)) * b
+}
+
+func LogOrder(order models.Order) {
+	log.Info("----------------- orders #" + strconv.Itoa(order.Step) + " -------------------")
+	log.Info(" OrderID  : ", order.ClientOrderID)
+	log.Info(" Symbol   : ", order.Symbol.String())
+	log.Info(" Side     : ", order.Side)
+	log.Info(" Type     : ", order.OrderType)
+	log.Info(" Price    : ", order.Price)
+	log.Info(" Quantity : ", order.Qty)
+
+	if order.SourceDepth != nil {
+		log.Info(" Time     : ", time.Now().Sub(order.SourceDepth.Time), " Ago")
+	}
+
+	log.Info("-----------------------------------------------")
+}
+
+func LogOrders(orders []models.Order) {
+	for _, order := range orders {
+		LogOrder(order)
+	}
 }
