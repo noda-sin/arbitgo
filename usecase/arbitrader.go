@@ -25,7 +25,7 @@ func NewArbitrader(ex Exchange, ma MarketAnalyzer, mainAsset models.Asset) *Arbi
 	}
 }
 
-func loginit() {
+func logInit() {
 	format := &log.TextFormatter{
 		FullTimestamp:   true,
 		TimestampFormat: "2006-01-02 15:04:05",
@@ -34,7 +34,7 @@ func loginit() {
 }
 
 func (arbit *Arbitrader) Run() {
-	loginit()
+	logInit()
 	log.Info("Starting Arbitrader ....")
 
 	mainAssetBalance, err := arbit.Exchange.GetBalance(arbit.MainAsset)
@@ -52,7 +52,7 @@ func (arbit *Arbitrader) Run() {
 
 	log.Info("Add event listener to receive updating depthes")
 
-	dch, stop := arbit.Exchange.GetDepthOnUpdate()
+	dch, _ := arbit.Exchange.GetDepthOnUpdate()
 
 	for {
 		log.Info("Get main asset balance")
@@ -77,10 +77,10 @@ func (arbit *Arbitrader) Run() {
 			}
 
 			success := func() bool {
-				stop <- true
-				defer func() {
-					stop <- false
-				}()
+				// stop <- true
+				// defer func() {
+				// 	stop <- false
+				// }()
 
 				log.Info("Found arbit orders")
 				LogOrders(orders)
@@ -323,12 +323,12 @@ func (arbit *Arbitrader) ValidateOrders(orders []models.Order, currBalance float
 	for _, order := range orders {
 		wg.Add(1)
 		go func(order models.Order) {
+			defer m.Unlock()
+			defer wg.Done()
 			depth, _ := arbit.Exchange.GetDepth(order.Symbol)
-			arbit.SetDepth(depth.Symbol, depth)
 			m.Lock()
+			arbit.SetDepth(depth.Symbol, depth)
 			depthes = append(depthes, depth)
-			m.Unlock()
-			wg.Done()
 		}(order)
 	}
 
@@ -359,7 +359,7 @@ func LogOrder(order models.Order) {
 		log.Info(" Time     : ", time.Now().Sub(order.SourceDepth.Time), " Ago")
 	}
 
-	log.Info("----------------------------------------------")
+	log.Info("-----------------------------------------------")
 }
 
 func LogOrders(orders []models.Order) {
