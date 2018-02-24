@@ -23,6 +23,7 @@ type Binance struct {
 	Symbols        []models.Symbol
 	DepthCache     cmap.ConcurrentMap
 	OrderRetry     int
+	UseWebsocket   bool
 }
 
 func NewBinance(apikey string, secret string) Binance {
@@ -129,6 +130,7 @@ func NewBinance(apikey string, secret string) Binance {
 		Symbols:        symbols,
 		DepthCache:     cmap.New(),
 		OrderRetry:     10,
+		UseWebsocket:   false,
 	}
 	return ex
 }
@@ -215,14 +217,14 @@ func (bi Binance) GetDepth(symbol models.Symbol) (*models.Depth, error) {
 	if err != nil {
 		return nil, err
 	}
-	depth, err := GetDepthInOrderBook(symbol, book, bi.QuoteAssetList)
+	depth, err := getDepthInOrderBook(symbol, book, bi.QuoteAssetList)
 	if err != nil {
 		return nil, err
 	}
 	return depth, nil
 }
 
-func GetDepthInOrderBook(symbol models.Symbol, orderBook *binance.OrderBook, quoteAssetList []models.Asset) (*models.Depth, error) {
+func getDepthInOrderBook(symbol models.Symbol, orderBook *binance.OrderBook, quoteAssetList []models.Asset) (*models.Depth, error) {
 	if len(orderBook.Bids) < 1 ||
 		len(orderBook.Asks) < 1 {
 		return nil, errors.Errorf("Bids or Asks length is empty")
@@ -275,73 +277,73 @@ func (bi Binance) connectWebsocket(symbol models.Symbol) (chan *binance.OrderBoo
 	return obch, done, err
 }
 
-// func (bi Binance) GetDepthWebsocket() (chan *models.Depth, chan bool) {
-// 	m := new(sync.Mutex)
-// 	stopping := false
-// 	dch := make(chan *models.Depth)
-// 	websockClose := make(chan struct{})
+func (bi Binance) getDepthOnUpdateWebsocket() (chan *models.Depth, chan bool) {
+	m := new(sync.Mutex)
+	stopping := false
+	dch := make(chan *models.Depth)
+	websockClose := make(chan struct{})
 
-// 	for _, symbol := range bi.GetSymbols() {
-// 		go func(symbol models.Symbol) {
-// 			for {
-// 				for stopping {
-// 				}
+	for _, symbol := range bi.GetSymbols() {
+		go func(symbol models.Symbol) {
+			for {
+				for stopping {
+				}
 
-// 				go func(symbol models.Symbol) {
-// 					defer func() {
-// 						websockClose <- struct{}{}
-// 					}()
+				go func(symbol models.Symbol) {
+					defer func() {
+						websockClose <- struct{}{}
+					}()
 
-// 					if stopping {
-// 						return
-// 					}
+					if stopping {
+						return
+					}
 
-// 					obch, done, err := bi.connectWebsocket(symbol)
+					obch, done, err := bi.connectWebsocket(symbol)
 
-// 					if err != nil {
-// 						return
-// 					}
+					if err != nil {
+						return
+					}
 
-// 					for {
-// 						if stopping {
-// 							return
-// 						}
+					for {
+						if stopping {
+							return
+						}
 
-// 						select {
-// 						case orderbook := <-obch:
-// 							depth, _ := GetDepthInOrderBook(
-// 								symbol,
-// 								orderbook,
-// 								bi.QuoteAssetList,
-// 							)
-// 							dch <- depth
-// 						case <-done:
-// 							return
-// 						default:
-// 						}
-// 					}
-// 				}(symbol)
-// 				<-websockClose
-// 			}
-// 		}(symbol)
-// 	}
+						select {
+						case orderbook := <-obch:
+							depth, _ := getDepthInOrderBook(
+								symbol,
+								orderbook,
+								bi.QuoteAssetList,
+							)
+							dch <- depth
+						case <-done:
+							return
+						default:
+						}
+					}
+				}(symbol)
+				<-websockClose
+			}
+		}(symbol)
+	}
 
-// 	stopch := make(chan bool)
+	stopch := make(chan bool)
 
-// 	go func() {
-// 		defer close(stopch)
-// 		for {
-// 			s := <-stopch
-// 			m.Lock()
-// 			stopping = s
-// 			m.Unlock()
-// 		}
-// 	}()
+	go func() {
+		defer close(stopch)
+		for {
+			s := <-stopch
+			m.Lock()
+			stopping = s
+			m.Unlock()
+		}
+	}()
 
-// 	return dch, stopch
-// }
+	return dch, stopch
+}
 
-func (bi Binance) GetDepthWebsocket() (chan *models.Depth, chan bool) {
+func (bi Binance) getDepthOnUpdateRequest() (chan *models.Depth, chan bool) {
 	m := new(sync.Mutex)
 	stopping := false
 	stopch := make(chan bool)
@@ -388,6 +390,13 @@ func (bi Binance) GetDepthWebsocket() (chan *models.Depth, chan bool) {
 	}()
 
 	return dch, stopch
+}
+
+func (bi Binance) GetDepthOnUpdate() (chan *models.Depth, chan bool) {
+	if bi.UseWebsocket {
+		return bi.getDepthOnUpdateWebsocket()
+	}
+	return bi.getDepthOnUpdateRequest()
 }
 
 func (bi Binance) SendOrder(order *models.Order) error {

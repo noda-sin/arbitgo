@@ -52,7 +52,7 @@ func (arbit *Arbitrader) Run() {
 
 	log.Info("Add event listener to receive updating depthes")
 
-	dch, stop := arbit.Exchange.GetDepthWebsocket()
+	dch, stop := arbit.Exchange.GetDepthOnUpdate()
 
 	for {
 		log.Info("Get main asset balance")
