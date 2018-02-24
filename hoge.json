@@ -1,4 +1,0 @@
-{
-  "code": -1102,
-  "msg": "Mandatory parameter 'symbol' was not sent, was empty/null, or malformed."
-}
