@@ -354,6 +354,11 @@ func LogOrder(order models.Order) {
 	log.Info(" Type     : ", order.OrderType)
 	log.Info(" Price    : ", order.Price)
 	log.Info(" Quantity : ", order.Qty)
+
+	if order.SourceDepth != nil {
+		log.Info(" Time     : ", time.Now().Sub(order.SourceDepth.Time), " Ago")
+	}
+
 	log.Info("----------------------------------------------")
 }
 

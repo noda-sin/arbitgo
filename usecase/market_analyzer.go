@@ -41,17 +41,6 @@ func (ma *MarketAnalyzer) ArbitrageOrders(depthList []*models.Depth, currBalance
 		if score > bestScore {
 			bestScore = score
 			bestOrders = orders
-
-			for i, depth := range d.DepthList {
-				log.Info("----------------- depth #" + strconv.Itoa(i+1) + " -----------------")
-				log.Info(" Symbol   : ", depth.Symbol)
-				log.Info(" AskPrice : ", depth.AskPrice)
-				log.Info(" AskQty   : ", depth.AskQty)
-				log.Info(" BidPrice : ", depth.BidPrice)
-				log.Info(" BidQty   : ", depth.BidQty)
-				log.Info("--------------------------------------------")
-			}
-			log.Info("#Score : ", score)
 		}
 	}
 
@@ -343,6 +332,7 @@ func (ma *MarketAnalyzer) GenerateOrders(rotateDepth *models.RotationDepth, curr
 		Side:          side1,
 		Qty:           qty1,
 		ClientOrderID: xid.New().String(),
+		SourceDepth:   depth1,
 	})
 
 	orders = append(orders, models.Order{
@@ -353,6 +343,7 @@ func (ma *MarketAnalyzer) GenerateOrders(rotateDepth *models.RotationDepth, curr
 		Side:          side2,
 		Qty:           qty2,
 		ClientOrderID: xid.New().String(),
+		SourceDepth:   depth2,
 	})
 
 	orders = append(orders, models.Order{
@@ -363,6 +354,7 @@ func (ma *MarketAnalyzer) GenerateOrders(rotateDepth *models.RotationDepth, curr
 		Side:          side3,
 		Qty:           qty3,
 		ClientOrderID: xid.New().String(),
+		SourceDepth:   depth3,
 	})
 
 	return score, orders
@@ -492,6 +484,7 @@ func (ma *MarketAnalyzer) SplitOrders(parentOrders []models.Order, qty float64) 
 				Side:          o.Side,
 				Qty:           o.Qty - qty,
 				ClientOrderID: o.ClientOrderID,
+				SourceDepth:   o.SourceDepth,
 			})
 		} else {
 			newParentOrders = append(newParentOrders, models.Order{
@@ -502,6 +495,7 @@ func (ma *MarketAnalyzer) SplitOrders(parentOrders []models.Order, qty float64) 
 				Side:          o.Side,
 				Qty:           util.Floor((1-rate)*o.Qty, o.Symbol.StepSize),
 				ClientOrderID: o.ClientOrderID,
+				SourceDepth:   o.SourceDepth,
 			})
 			childOrders = append(childOrders, models.Order{
 				Step:          o.Step,
@@ -511,6 +505,7 @@ func (ma *MarketAnalyzer) SplitOrders(parentOrders []models.Order, qty float64) 
 				Side:          o.Side,
 				Qty:           util.Floor(rate*o.Qty, o.Symbol.StepSize),
 				ClientOrderID: xid.New().String(),
+				SourceDepth:   o.SourceDepth,
 			})
 		}
 	}
@@ -523,24 +518,24 @@ func (ma *MarketAnalyzer) ValidateOrders(orders []models.Order, depthes []*model
 		for _, depth := range depthes {
 			if order.Symbol.String() == depth.Symbol.String() {
 				if order.Side == models.SideBuy {
-					log.Info("----------------- depth #" + strconv.Itoa(order.Step) + " -----------------")
+					log.Info("----------------- depth #" + strconv.Itoa(order.Step) + " ----------------")
 					log.Info(" Symbol   : ", order.Symbol)
 					log.Info(" Side     : ", order.Side)
 					log.Info(" Price    : ", order.Price, " vs ", depth.AskPrice)
 					log.Info(" Quantity : ", order.Qty, " vs ", depth.AskQty)
-					log.Info("--------------------------------------------")
+					log.Info("------------------------------------------")
 
 					ok := (depth.AskPrice <= order.Price) && (depth.AskQty >= order.Qty)
 					if ok == false {
 						return false
 					}
 				} else {
-					log.Info("----------------- depth #" + strconv.Itoa(order.Step) + " -----------------")
+					log.Info("----------------- depth #" + strconv.Itoa(order.Step) + " ----------------")
 					log.Info(" Symbol   : ", order.Symbol)
 					log.Info(" Side     : ", order.Side)
 					log.Info(" Price    : ", order.Price, " vs ", depth.BidPrice)
 					log.Info(" Quantity : ", order.Qty, " vs ", depth.BidQty)
-					log.Info("--------------------------------------------")
+					log.Info("-------------------------------------------")
 
 					ok := (depth.BidPrice >= order.Price) && (depth.BidQty >= order.Qty)
 					if ok == false {

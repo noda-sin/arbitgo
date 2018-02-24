@@ -65,6 +65,7 @@ type Order struct {
 	Side          OrderSide
 	Qty           float64
 	ClientOrderID string
+	SourceDepth   *Depth
 }
 
 type Depth struct {
