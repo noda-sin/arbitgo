@@ -3,8 +3,6 @@ package usecase
 import (
 	"strconv"
 
-	"github.com/orcaman/concurrent-map"
-
 	models "github.com/OopsMouse/arbitgo/models"
 	"github.com/OopsMouse/arbitgo/util"
 	"github.com/pkg/errors"
@@ -13,20 +11,18 @@ import (
 )
 
 type MarketAnalyzer struct {
-	MainAsset  models.Asset
-	Charge     float64
-	MaxQty     float64
-	Threshold  float64
-	DepthCache cmap.ConcurrentMap
+	MainAsset models.Asset
+	Charge    float64
+	MaxQty    float64
+	Threshold float64
 }
 
 func NewMarketAnalyzer(mainAsset models.Asset, charge float64, maxqty float64, threshold float64) MarketAnalyzer {
 	return MarketAnalyzer{
-		MainAsset:  mainAsset,
-		Charge:     charge,
-		MaxQty:     maxqty,
-		Threshold:  threshold,
-		DepthCache: cmap.New(),
+		MainAsset: mainAsset,
+		Charge:    charge,
+		MaxQty:    maxqty,
+		Threshold: threshold,
 	}
 }
 
@@ -523,6 +519,7 @@ func (ma *MarketAnalyzer) ValidateOrders(orders []models.Order, depthes []*model
 					log.Info(" Side     : ", order.Side)
 					log.Info(" Price    : ", order.Price, " vs ", depth.AskPrice)
 					log.Info(" Quantity : ", order.Qty, " vs ", depth.AskQty)
+					log.Info(" Time     : ", depth.Time.Sub(order.SourceDepth.Time))
 					log.Info("------------------------------------------")
 
 					ok := (depth.AskPrice <= order.Price) && (depth.AskQty >= order.Qty)
@@ -535,6 +532,7 @@ func (ma *MarketAnalyzer) ValidateOrders(orders []models.Order, depthes []*model
 					log.Info(" Side     : ", order.Side)
 					log.Info(" Price    : ", order.Price, " vs ", depth.BidPrice)
 					log.Info(" Quantity : ", order.Qty, " vs ", depth.BidQty)
+					log.Info(" Time     : ", depth.Time.Sub(order.SourceDepth.Time))
 					log.Info("-------------------------------------------")
 
 					ok := (depth.BidPrice >= order.Price) && (depth.BidQty >= order.Qty)

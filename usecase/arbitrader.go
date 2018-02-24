@@ -62,6 +62,6 @@ func (arbit *Arbitrader) Run() {
 	for {
 		depth := <-dch
 		arbit.Cache.Set(depth)
-		go arbit.Analyze(arbit.Cache.GetAll())
+		go arbit.Analyze(arbit.Cache.GetRelevantDepthes(depth))
 	}
 }

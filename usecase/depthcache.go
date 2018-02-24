@@ -2,20 +2,24 @@ package usecase
 
 import (
 	"sync"
+	"time"
 
 	"github.com/OopsMouse/arbitgo/models"
 )
 
 type DepthCache struct {
-	cache map[string]*models.Depth
-	lock  *sync.Mutex
+	cache      map[string]*models.Depth
+	lock       *sync.Mutex
+	expireTime time.Duration
 }
 
 func NewDepthCache() *DepthCache {
-	return &DepthCache{
-		cache: map[string]*models.Depth{},
-		lock:  new(sync.Mutex),
+	d := &DepthCache{
+		cache:      map[string]*models.Depth{},
+		lock:       new(sync.Mutex),
+		expireTime: 2 * time.Second,
 	}
+	return d
 }
 
 func (c *DepthCache) Set(depth *models.Depth) {
@@ -30,12 +34,40 @@ func (c *DepthCache) Get(symbol models.Symbol) *models.Depth {
 	return c.cache[symbol.String()]
 }
 
-func (c *DepthCache) GetAll() []*models.Depth {
+func (c *DepthCache) GetAllDepthes() []*models.Depth {
 	defer c.lock.Unlock()
 	c.lock.Lock()
 	depthList := []*models.Depth{}
 	for _, v := range c.cache {
-		depthList = append(depthList, v)
+		if time.Now().Sub(v.Time) < c.expireTime {
+			depthList = append(depthList, v)
+		}
+	}
+	return depthList
+}
+
+func (c *DepthCache) GetRelevantDepthes(depth *models.Depth) []*models.Depth {
+	defer c.lock.Unlock()
+	c.lock.Lock()
+	depthList := []*models.Depth{}
+	for _, v := range c.cache {
+		if v.BaseAsset.Equal(depth.Symbol.BaseAsset) {
+			if time.Now().Sub(v.Time) < c.expireTime {
+				depthList = append(depthList, v)
+			}
+		}
+	}
+	for _, d := range depthList {
+		for _, v := range c.cache {
+			if (v.BaseAsset.Equal(depth.Symbol.QuoteAsset) &&
+				v.QuoteAsset.Equal(d.QuoteAsset)) ||
+				(v.QuoteAsset.Equal(depth.Symbol.QuoteAsset) &&
+					v.BaseAsset.Equal(d.QuoteAsset)) {
+				if time.Now().Sub(v.Time) < c.expireTime {
+					depthList = append(depthList, v)
+				}
+			}
+		}
 	}
 	return depthList
 }

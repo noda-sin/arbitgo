@@ -17,12 +17,12 @@ import (
 )
 
 type Binance struct {
-	Api          binance.Binance
-	QuoteAsset   *util.Set
-	Symbols      []models.Symbol
-	DepthCache   cmap.ConcurrentMap
-	OrderRetry   int
-	UseWebsocket bool
+	Api           binance.Binance
+	QuoteAssetSet *util.Set
+	Symbols       []models.Symbol
+	DepthCache    cmap.ConcurrentMap
+	OrderRetry    int
+	UseWebsocket  bool
 }
 
 func NewBinance(apikey string, secret string) Binance {
@@ -117,12 +117,12 @@ func NewBinance(apikey string, secret string) Binance {
 	}
 
 	ex := Binance{
-		Api:          b,
-		QuoteAsset:   quoteAssetSet,
-		Symbols:      symbols,
-		DepthCache:   cmap.New(),
-		OrderRetry:   10,
-		UseWebsocket: true,
+		Api:           b,
+		QuoteAssetSet: quoteAssetSet,
+		Symbols:       symbols,
+		DepthCache:    cmap.New(),
+		OrderRetry:    10,
+		UseWebsocket:  true,
 	}
 	return ex
 }
@@ -278,10 +278,13 @@ func (bi Binance) getDepthOnUpdateWebsocket(symbols []models.Symbol) (chan *mode
 
 						select {
 						case orderbook := <-obch:
-							depth, _ := getDepthInOrderBook(
+							depth, err := getDepthInOrderBook(
 								symbol,
 								orderbook,
 							)
+							if err != nil {
+								continue
+							}
 							dch <- depth
 						case <-done:
 							return
@@ -313,7 +316,7 @@ func (bi Binance) getDepthOnUpdateRequest(symbols []models.Symbol) (chan *models
 	m := new(sync.Mutex)
 	stopping := false
 	stopch := make(chan bool)
-	dch := make(chan *models.Depth)
+	dch := make(chan *models.Depth, len(symbols))
 
 	depthReqChan := make(chan models.Symbol)
 
@@ -339,7 +342,6 @@ func (bi Binance) getDepthOnUpdateRequest(symbols []models.Symbol) (chan *models
 		for {
 			for _, symbol := range symbols {
 				depthReqChan <- symbol
-				time.Sleep(1 / 1200 * time.Minute)
 			}
 		}
 	}()
@@ -360,8 +362,8 @@ func (bi Binance) getDepthOnUpdateRequest(symbols []models.Symbol) (chan *models
 func (bi Binance) getQuoteToQuotePairSymbols(symbols []models.Symbol) []models.Symbol {
 	ret := []models.Symbol{}
 	for _, s := range symbols {
-		if bi.QuoteAsset.Include(string(s.BaseAsset)) &&
-			bi.QuoteAsset.Include(string(s.QuoteAsset)) {
+		if bi.QuoteAssetSet.Include(string(s.BaseAsset)) &&
+			bi.QuoteAssetSet.Include(string(s.QuoteAsset)) {
 			ret = append(ret, s)
 		}
 	}
@@ -371,7 +373,7 @@ func (bi Binance) getQuoteToQuotePairSymbols(symbols []models.Symbol) []models.S
 func (bi Binance) getQuoteToBasePairSymbols(symbols []models.Symbol) []models.Symbol {
 	ret := []models.Symbol{}
 	for _, s := range symbols {
-		if !bi.QuoteAsset.Include(string(s.BaseAsset)) {
+		if !bi.QuoteAssetSet.Include(string(s.BaseAsset)) {
 			ret = append(ret, s)
 		}
 	}

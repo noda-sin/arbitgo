@@ -6,6 +6,10 @@ import (
 
 type Asset string
 
+func (a Asset) Equal(b Asset) bool {
+	return string(a) == string(b)
+}
+
 type OrderSide string
 
 type OrderType string
