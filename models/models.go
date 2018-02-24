@@ -1,5 +1,9 @@
 package models
 
+import (
+	"time"
+)
+
 type Asset string
 
 type OrderSide string
@@ -71,6 +75,7 @@ type Depth struct {
 	AskPrice   float64
 	BidQty     float64
 	AskQty     float64
+	Time       time.Time
 }
 
 type RotationDepth struct {

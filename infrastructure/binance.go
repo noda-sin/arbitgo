@@ -258,6 +258,7 @@ func getDepthInOrderBook(symbol models.Symbol, orderBook *binance.OrderBook, quo
 		AskPrice:   askPrice,
 		BidQty:     bidQty,
 		AskQty:     askQty,
+		Time:       time.Now(),
 	}, nil
 }
 
