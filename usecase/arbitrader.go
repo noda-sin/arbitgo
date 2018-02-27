@@ -48,7 +48,7 @@ func (arbit *Arbitrader) Run() {
 	logInit()
 	log.Info("Starting Arbitrader ....")
 
-	arbit.RefleshBalances()
+	arbit.LoadBalances()
 
 	log.Info("----------------- params -----------------")
 	log.Info(" Main asset         : ", arbit.MainAsset)

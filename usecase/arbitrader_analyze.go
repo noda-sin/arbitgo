@@ -3,6 +3,7 @@ package usecase
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	models "github.com/OopsMouse/arbitgo/models"
 	"github.com/OopsMouse/arbitgo/util"
@@ -23,10 +24,8 @@ func (arbit *Arbitrader) Analyze(depthList []*models.Depth) {
 	log.Info("Found arbit orders")
 	util.LogOrders(orders)
 
-	log.Info("Validate orders")
 	orders, err := arbit.ValidateOrders(orders, balance.Free)
 	if err != nil {
-		log.Warn("Validate orders failed")
 		return
 	}
 	go arbit.StartTreding(orders)
@@ -44,6 +43,8 @@ func (arbit *Arbitrader) ValidateOrders(orders []models.Order, currBalance float
 
 	m := new(sync.Mutex)
 
+	start := time.Now()
+
 	for _, order := range orders {
 		wg.Add(1)
 		go func(order models.Order) {
@@ -58,14 +59,13 @@ func (arbit *Arbitrader) ValidateOrders(orders []models.Order, currBalance float
 
 	wg.Wait()
 
+	end := time.Now()
+
+	log.Info("Get depthes time, ", end.Sub(start))
+
 	ok := arbit.MarketAnalyzer.ValidateOrders(orders, depthes)
 	if ok == true {
 		return orders, nil
 	}
-
-	newOrders := arbit.MarketAnalyzer.ArbitrageOrders(depthes, currBalance)
-	if newOrders == nil {
-		return nil, fmt.Errorf("Arbit orders destroyed")
-	}
-	return newOrders, nil
+	return nil, fmt.Errorf("Arbit orders destroyed")
 }

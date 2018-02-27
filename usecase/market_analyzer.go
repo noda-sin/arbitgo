@@ -1,8 +1,6 @@
 package usecase
 
 import (
-	"strconv"
-
 	models "github.com/OopsMouse/arbitgo/models"
 	"github.com/OopsMouse/arbitgo/util"
 	"github.com/pkg/errors"
@@ -510,39 +508,28 @@ func (ma *MarketAnalyzer) SplitOrders(parentOrders []models.Order, qty float64) 
 }
 
 func (ma *MarketAnalyzer) ValidateOrders(orders []models.Order, depthes []*models.Depth) bool {
+	sortedDepth := []*models.Depth{}
 	for _, order := range orders {
 		for _, depth := range depthes {
 			if order.Symbol.String() == depth.Symbol.String() {
-				if order.Side == models.SideBuy {
-					log.Info("----------------- depth #" + strconv.Itoa(order.Step) + " ----------------")
-					log.Info(" Symbol   : ", order.Symbol)
-					log.Info(" Side     : ", order.Side)
-					log.Info(" Price    : ", order.Price, " vs ", depth.AskPrice)
-					log.Info(" Quantity : ", order.Qty, " vs ", depth.AskQty)
-					log.Info(" Time     : ", depth.Time.Sub(order.SourceDepth.Time))
-					log.Info("------------------------------------------")
-
-					ok := (depth.AskPrice <= order.Price) && (depth.AskQty >= order.Qty)
-					if ok == false {
-						return false
-					}
-				} else {
-					log.Info("----------------- depth #" + strconv.Itoa(order.Step) + " ----------------")
-					log.Info(" Symbol   : ", order.Symbol)
-					log.Info(" Side     : ", order.Side)
-					log.Info(" Price    : ", order.Price, " vs ", depth.BidPrice)
-					log.Info(" Quantity : ", order.Qty, " vs ", depth.BidQty)
-					log.Info(" Time     : ", depth.Time.Sub(order.SourceDepth.Time))
-					log.Info("-------------------------------------------")
-
-					ok := (depth.BidPrice >= order.Price) && (depth.BidQty >= order.Qty)
-					if ok == false {
-						return false
-					}
-				}
-				break
+				sortedDepth = append(sortedDepth, depth)
 			}
 		}
 	}
-	return true
+
+	start := orders[0].Qty
+	currentQty := start
+	for i, depth := range sortedDepth {
+		order := orders[i]
+		if order.Side == models.SideBuy {
+			currentQty = util.Floor(currentQty, depth.Symbol.StepSize) / depth.AskPrice
+		} else {
+			currentQty = util.Floor(currentQty, depth.Symbol.StepSize) * depth.BidPrice
+		}
+	}
+	end := currentQty
+	if end > start {
+		return true
+	}
+	return false
 }

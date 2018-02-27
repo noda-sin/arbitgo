@@ -5,7 +5,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (arbit *Arbitrader) RefleshBalances() {
+func (arbit *Arbitrader) LoadBalances() {
 	balances, err := arbit.Exchange.GetBalances()
 	if err != nil {
 		return

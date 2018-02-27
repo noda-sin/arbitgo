@@ -19,10 +19,17 @@ func (arbit *Arbitrader) StartTreding(orders []models.Order) {
 	arbit.StatusLock.Unlock()
 	go func() {
 		log.Info("Starting trade ....")
+		arbit.LoadBalances()
+		log.Info(arbit.MainAsset, " : ", arbit.GetBalance(arbit.MainAsset))
+
 		<-arbit.TradeOrder(orders)
+
 		arbit.StatusLock.Lock()
 		arbit.Status = TradeWaiting
 		arbit.StatusLock.Unlock()
+
+		arbit.LoadBalances()
+		log.Info(arbit.MainAsset, " : ", arbit.GetBalance(arbit.MainAsset))
 	}()
 }
 
@@ -30,6 +37,18 @@ func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
 	done := make(chan struct{})
 	currentOrders := orders
 	currentOrder := currentOrders[0]
+
+	// var currentAsset models.Asset
+	// if currentOrder.Side == models.SideBuy {
+	// 	currentAsset = currentOrder.Symbol.QuoteAsset
+	// } else {
+	// 	currentAsset = currentOrder.Symbol.BaseAsset
+	// }
+
+	// arbit.LoadBalances()
+	// currentBalance := arbit.GetBalance(currentAsset)
+	// currentOrder.OrderType = models.TypeMarket
+	// currentOrder.Qty = util.Floor(currentBalance.Free, currentOrder.Symbol.StepSize)
 
 	go func() {
 		defer close(done)
