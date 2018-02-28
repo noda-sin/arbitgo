@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -34,8 +33,6 @@ var (
 	newline = []byte{'\n'}
 	space   = []byte{' '}
 )
-
-var addr = flag.String("addr", "localhost:8080", "http service address")
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -168,8 +165,8 @@ func run(apikey string, secret string) {
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(hub, w, r)
 	})
-	log.Println("start", *addr)
-	log.Fatal(http.ListenAndServe(*addr, nil))
+	log.Println("listen....")
+	log.Fatal(http.ListenAndServe(":80", nil))
 }
 
 func newExchange(apikey string, secret string) usecase.Exchange {
