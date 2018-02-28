@@ -20,7 +20,7 @@ func (arbit *Arbitrader) StartTreding(orders []models.Order) {
 	go func() {
 		log.Info("Starting trade ....")
 		arbit.LoadBalances()
-		log.Info(arbit.MainAsset, " : ", arbit.GetBalance(arbit.MainAsset))
+		log.Info(arbit.MainAsset, " : ", arbit.GetBalance(arbit.MainAsset).Free)
 
 		<-arbit.TradeOrder(orders)
 
@@ -29,7 +29,7 @@ func (arbit *Arbitrader) StartTreding(orders []models.Order) {
 		arbit.StatusLock.Unlock()
 
 		arbit.LoadBalances()
-		log.Info(arbit.MainAsset, " : ", arbit.GetBalance(arbit.MainAsset))
+		log.Info(arbit.MainAsset, " : ", arbit.GetBalance(arbit.MainAsset).Free)
 	}()
 }
 

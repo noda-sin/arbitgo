@@ -5,10 +5,10 @@ import (
 )
 
 func TestFloor(t *testing.T) {
-	a := 0.025342
-	b := 0.01
+	a := 10.46405786
+	b := 0.010000000
 	c := Floor(a, b)
-	if c != 0.02 {
+	if c != 10.46 {
 		t.Fatal("failed test")
 	}
 }

@@ -243,19 +243,19 @@ func (ma *MarketAnalyzer) GenerateOrders(rotateDepth *models.RotationDepth, curr
 	}
 
 	// チャージ計算
-	qty1 = (1 - charge) * qty1
+	qty1sub := (1 - charge) * qty1
 
 	if side2 == models.SideBuy {
 		if side1 == models.SideBuy {
-			qty2 = util.Floor(qty1/price2, symbol2.StepSize)
+			qty2 = util.Floor(qty1sub/price2, symbol2.StepSize)
 		} else {
-			qty2 = util.Floor((qty1*price1)/price2, symbol2.StepSize)
+			qty2 = util.Floor((qty1sub*price1)/price2, symbol2.StepSize)
 		}
 	} else {
 		if side1 == models.SideBuy {
-			qty2 = util.Floor(qty1, symbol2.StepSize)
+			qty2 = util.Floor(qty1sub, symbol2.StepSize)
 		} else {
-			qty2 = util.Floor(qty1*price1, symbol2.StepSize)
+			qty2 = util.Floor(qty1sub*price1, symbol2.StepSize)
 		}
 	}
 
@@ -271,19 +271,19 @@ func (ma *MarketAnalyzer) GenerateOrders(rotateDepth *models.RotationDepth, curr
 	}
 
 	// チャージ計算
-	qty2 = (1 - charge) * qty2
+	qty2sub := (1 - charge) * qty2
 
 	if side3 == models.SideBuy {
 		if side2 == models.SideBuy {
-			qty3 = util.Floor(qty2/price3, symbol3.StepSize)
+			qty3 = util.Floor(qty2sub/price3, symbol3.StepSize)
 		} else {
-			qty3 = util.Floor((qty2*price2)/price3, symbol3.StepSize)
+			qty3 = util.Floor((qty2sub*price2)/price3, symbol3.StepSize)
 		}
 	} else {
 		if side2 == models.SideBuy {
-			qty3 = util.Floor(qty2, symbol3.StepSize)
+			qty3 = util.Floor(qty2sub, symbol3.StepSize)
 		} else {
-			qty3 = util.Floor(qty2*price2, symbol3.StepSize)
+			qty3 = util.Floor(qty2sub*price2, symbol3.StepSize)
 		}
 	}
 
@@ -300,9 +300,9 @@ func (ma *MarketAnalyzer) GenerateOrders(rotateDepth *models.RotationDepth, curr
 
 	var endMainQty float64
 	if side3 == models.SideBuy {
-		endMainQty = qty3
+		endMainQty = qty3 * (1 - charge)
 	} else {
-		endMainQty = qty3 * price3
+		endMainQty = qty3 * price3 * (1 - charge)
 	}
 
 	score := (endMainQty - beginMainQty) / beginMainQty
@@ -312,10 +312,6 @@ func (ma *MarketAnalyzer) GenerateOrders(rotateDepth *models.RotationDepth, curr
 		log.Debug("Score is less than 0")
 		return 0, nil
 	}
-
-	qty1 = util.Floor(qty1, symbol1.StepSize)
-	qty2 = util.Floor(qty2, symbol2.StepSize)
-	qty3 = util.Floor(qty3, symbol3.StepSize)
 
 	orders := []models.Order{}
 	orders = append(orders, models.Order{
