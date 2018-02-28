@@ -1,6 +1,8 @@
 package usecase
 
 import (
+	"fmt"
+
 	models "github.com/OopsMouse/arbitgo/models"
 	"github.com/OopsMouse/arbitgo/util"
 	"github.com/pkg/errors"
@@ -24,7 +26,7 @@ func NewMarketAnalyzer(mainAsset models.Asset, charge float64, maxqty float64, t
 	}
 }
 
-func (ma *MarketAnalyzer) ArbitrageOrders(depthList []*models.Depth, currBalance float64) []models.Order {
+func (ma *MarketAnalyzer) ArbitrageOrders(depthList []*models.Depth, currBalance float64) *models.TradeOrder {
 	var bestScore float64
 	var bestOrders []models.Order
 	for _, d := range GenerateRotationDepthList(ma.MainAsset, depthList) {
@@ -43,7 +45,10 @@ func (ma *MarketAnalyzer) ArbitrageOrders(depthList []*models.Depth, currBalance
 		return nil
 	}
 
-	return bestOrders
+	return &models.TradeOrder{
+		Score:  bestScore,
+		Orders: bestOrders,
+	}
 }
 
 func GenerateRotationDepthList(mainAsset models.Asset, depthList []*models.Depth) []*models.RotationDepth {
@@ -459,48 +464,60 @@ func (ma *MarketAnalyzer) ForceChangeOrders(symbols []models.Symbol, from models
 	return nil, errors.Errorf("Not found orders to force change")
 }
 
-func (ma *MarketAnalyzer) SplitOrders(parentOrders []models.Order, qty float64) ([]models.Order, []models.Order) {
+func (ma *MarketAnalyzer) SplitOrders(parentOrders []models.Order, qty float64) ([]models.Order, []models.Order, error) {
 	newParentOrders := []models.Order{}
 	childOrders := []models.Order{}
 	rate := qty / parentOrders[0].Qty
 
 	for i, o := range parentOrders {
 		if i == 0 {
+			qty := util.Floor(o.Qty-qty, o.Symbol.StepSize)
+			if qty == 0 {
+				return nil, nil, fmt.Errorf("Qty may be 0 in the cases")
+			}
 			newParentOrders = append(newParentOrders, models.Order{
 				Step:          o.Step,
 				Symbol:        o.Symbol,
 				OrderType:     o.OrderType,
 				Price:         o.Price,
 				Side:          o.Side,
-				Qty:           o.Qty - qty,
+				Qty:           qty,
 				ClientOrderID: o.ClientOrderID,
 				SourceDepth:   o.SourceDepth,
 			})
 		} else {
+			qty := util.Floor((1-rate)*o.Qty, o.Symbol.StepSize)
+			if qty == 0 {
+				return nil, nil, fmt.Errorf("Qty may be 0 in the cases")
+			}
 			newParentOrders = append(newParentOrders, models.Order{
 				Step:          o.Step,
 				Symbol:        o.Symbol,
 				OrderType:     o.OrderType,
 				Price:         o.Price,
 				Side:          o.Side,
-				Qty:           util.Floor((1-rate)*o.Qty, o.Symbol.StepSize),
+				Qty:           qty,
 				ClientOrderID: o.ClientOrderID,
 				SourceDepth:   o.SourceDepth,
 			})
+			qty = util.Floor(rate*o.Qty, o.Symbol.StepSize)
+			if qty == 0 {
+				return nil, nil, fmt.Errorf("Qty may be 0 in the cases")
+			}
 			childOrders = append(childOrders, models.Order{
 				Step:          o.Step,
 				Symbol:        o.Symbol,
 				OrderType:     o.OrderType,
 				Price:         o.Price,
 				Side:          o.Side,
-				Qty:           util.Floor(rate*o.Qty, o.Symbol.StepSize),
+				Qty:           qty,
 				ClientOrderID: xid.New().String(),
 				SourceDepth:   o.SourceDepth,
 			})
 		}
 	}
 
-	return newParentOrders, childOrders
+	return newParentOrders, childOrders, nil
 }
 
 func (ma *MarketAnalyzer) ValidateOrders(orders []models.Order, depthes []*models.Depth) bool {

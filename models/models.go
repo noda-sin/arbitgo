@@ -61,6 +61,11 @@ func (symbs Symbols) Swap(i, j int) {
 	symbs[i], symbs[j] = symbs[j], symbs[i]
 }
 
+type TradeOrder struct {
+	Score  float64
+	Orders []Order
+}
+
 type Order struct {
 	Step          int
 	Symbol        Symbol

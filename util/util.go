@@ -1,6 +1,7 @@
 package util
 
 import (
+	"math"
 	"path"
 	"runtime"
 	"strconv"
@@ -113,7 +114,7 @@ func BackoffRetry(retry int, op Operation) error {
 }
 
 func Floor(a float64, b float64) float64 {
-	return float64(int(a/b)) * b
+	return float64(math.Trunc(a/b)) * b
 }
 
 func LogOrder(order models.Order) {
@@ -124,6 +125,7 @@ func LogOrder(order models.Order) {
 	log.Info(" Type     : ", order.OrderType)
 	log.Info(" Price    : ", order.Price)
 	log.Info(" Quantity : ", order.Qty)
+	log.Info(" Step     : ", order.Symbol.StepSize)
 
 	if order.SourceDepth != nil {
 		log.Info(" Time     : ", time.Now().Sub(order.SourceDepth.Time), " Ago")

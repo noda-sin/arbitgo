@@ -9,12 +9,12 @@ import (
 
 func (arbit *Arbitrader) Analyze(depthList []*models.Depth) {
 	balance := arbit.GetBalance(arbit.MainAsset)
-	orders := arbit.MarketAnalyzer.ArbitrageOrders(
+	tradeOrder := arbit.MarketAnalyzer.ArbitrageOrders(
 		depthList,
 		balance.Free,
 	)
 
-	if orders == nil {
+	if tradeOrder == nil {
 		return
 	}
 
@@ -25,7 +25,8 @@ func (arbit *Arbitrader) Analyze(depthList []*models.Depth) {
 	// if err != nil {
 	// 	return
 	// }
-	go arbit.StartTreding(orders)
+
+	go arbit.StartTreding(tradeOrder)
 }
 
 func (arbit *Arbitrader) ValidateOrders(orders []models.Order, currBalance float64) ([]models.Order, error) {

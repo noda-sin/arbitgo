@@ -8,7 +8,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (arbit *Arbitrader) StartTreding(orders []models.Order) {
+func (arbit *Arbitrader) StartTreding(tradeOrder *models.TradeOrder) {
 	arbit.StatusLock.Lock()
 	if arbit.Status == TradeRunning {
 		arbit.StatusLock.Unlock()
@@ -19,10 +19,11 @@ func (arbit *Arbitrader) StartTreding(orders []models.Order) {
 	arbit.StatusLock.Unlock()
 	go func() {
 		log.Info("Starting trade ....")
+		log.Info("Score : ", tradeOrder.Score)
 		arbit.LoadBalances()
 		log.Info(arbit.MainAsset, " : ", arbit.GetBalance(arbit.MainAsset).Free)
 
-		<-arbit.TradeOrder(orders)
+		<-arbit.TradeOrder(tradeOrder.Orders)
 
 		arbit.StatusLock.Lock()
 		arbit.Status = TradeWaiting
@@ -73,7 +74,7 @@ func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
 		waitingTotalQty := currentOrder.Qty
 		childTrades := []chan struct{}{}
 
-		for i := 0; i < 1800; i++ {
+		for i := 0; i < 18000; i++ {
 			var executedQty float64
 			executedQty, err = arbit.Exchange.ConfirmOrder(&currentOrder)
 			if err != nil {
@@ -98,23 +99,24 @@ func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
 				// 別トレーディングとして注文
 				log.WithField("ID", currentOrder.ClientOrderID).Info("Create a child and trade ahead child trade")
 
-				executedTotalQty = 0
 				var childOrders []models.Order
 				log.Info("START - create child orders")
 
-				currentOrders, childOrders = arbit.MarketAnalyzer.SplitOrders(orders, executedQty)
-				currentOrder = currentOrders[0]
+				currentOrders, childOrders, err := arbit.MarketAnalyzer.SplitOrders(orders, executedQty)
+				if err == nil {
+					currentOrder = currentOrders[0]
 
-				log.WithField("ID", currentOrder.ClientOrderID).Info("# Parent Orders")
-				util.LogOrders(currentOrders)
-				log.WithField("ID", currentOrder.ClientOrderID).Info("# Child Orders")
-				util.LogOrders(childOrders)
+					log.WithField("ID", currentOrder.ClientOrderID).Info("# Parent Orders")
+					util.LogOrders(currentOrders)
+					log.WithField("ID", currentOrder.ClientOrderID).Info("# Child Orders")
+					util.LogOrders(childOrders)
 
-				log.Info("END - create child orders")
-				childTrade := arbit.TradeOrder(childOrders)
-				childTrades = append(childTrades, childTrade)
+					log.Info("END - create child orders")
+					childTrade := arbit.TradeOrder(childOrders)
+					childTrades = append(childTrades, childTrade)
+				}
 			}
-			time.Sleep(10 * time.Second)
+			time.Sleep(1 * time.Second)
 		}
 
 		defer func() {
