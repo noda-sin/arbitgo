@@ -23,10 +23,10 @@ func (arbit *Arbitrader) Analyze(depthList []*models.Depth) {
 	log.Info("Found arbit orders")
 	util.LogOrders(orders)
 
-	// orders, err := arbit.ValidateOrders(orders, balance.Free)
-	// if err != nil {
-	// 	return
-	// }
+	orders, err := arbit.ValidateOrders(orders, balance.Free)
+	if err != nil {
+		return
+	}
 	go arbit.StartTreding(orders)
 }
 

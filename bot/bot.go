@@ -22,6 +22,7 @@ func main() {
 	var assetString string
 	var maxqty float64
 	var threshold float64
+	var server string
 
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
@@ -57,6 +58,11 @@ func main() {
 			Usage:       "profit threshold",
 			Destination: &threshold,
 		},
+		cli.StringFlag{
+			Name:        "server",
+			Usage:       "server host",
+			Destination: &server,
+		},
 	}
 
 	app.Action = func(c *cli.Context) error {
@@ -69,13 +75,13 @@ func main() {
 	app.Run(os.Args)
 
 	mainAsset := models.Asset(assetString)
-	exchange := CreateExchange(apiKey, secret, mainAsset, dryrun)
-	analyzer := CreateAnalyzer(mainAsset, exchange.GetCharge(), maxqty, threshold)
-	arbitrader := CreateTrader(exchange, analyzer, mainAsset)
+	exchange := newExchange(apiKey, secret, mainAsset, dryrun)
+	analyzer := newAnalyzer(mainAsset, exchange.GetCharge(), maxqty, threshold)
+	arbitrader := newTrader(exchange, analyzer, mainAsset, &server)
 	arbitrader.Run()
 }
 
-func CreateExchange(apikey string, secret string, mainAsset models.Asset, dryRun bool) usecase.Exchange {
+func newExchange(apikey string, secret string, mainAsset models.Asset, dryRun bool) usecase.Exchange {
 	binance := infrastructure.NewBinance(
 		apikey,
 		secret,
@@ -97,7 +103,7 @@ func CreateExchange(apikey string, secret string, mainAsset models.Asset, dryRun
 	return binance
 }
 
-func CreateAnalyzer(mainAsset models.Asset, charge float64, maxqty float64, threshold float64) usecase.MarketAnalyzer {
+func newAnalyzer(mainAsset models.Asset, charge float64, maxqty float64, threshold float64) usecase.MarketAnalyzer {
 	return usecase.NewMarketAnalyzer(
 		mainAsset,
 		charge,
@@ -106,10 +112,11 @@ func CreateAnalyzer(mainAsset models.Asset, charge float64, maxqty float64, thre
 	)
 }
 
-func CreateTrader(exchange usecase.Exchange, analyzer usecase.MarketAnalyzer, mainAsset models.Asset) *usecase.Arbitrader {
+func newTrader(exchange usecase.Exchange, analyzer usecase.MarketAnalyzer, mainAsset models.Asset, server *string) *usecase.Arbitrader {
 	return usecase.NewArbitrader(
 		exchange,
 		analyzer,
 		mainAsset,
+		server,
 	)
 }
