@@ -73,7 +73,7 @@ func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
 		waitingTotalQty := currentOrder.Qty
 		childTrades := []chan struct{}{}
 
-		for i := 0; i < 10; i++ {
+		for i := 0; i < 1800; i++ {
 			var executedQty float64
 			executedQty, err = arbit.Exchange.ConfirmOrder(&currentOrder)
 			if err != nil {
