@@ -146,7 +146,7 @@ func (bi Binance) GetBalance(asset models.Asset) (*models.Balance, error) {
 
 func (bi Binance) GetBalances() ([]*models.Balance, error) {
 	acr := binance.AccountRequest{
-		RecvWindow: 5 * time.Second,
+		RecvWindow: 10 * time.Second,
 		Timestamp:  time.Now(),
 	}
 	var account *binance.Account
@@ -448,7 +448,7 @@ func (bi Binance) SendOrder(order *models.Order) error {
 func (bi Binance) ConfirmOrder(order *models.Order) (float64, error) {
 	oor := binance.OpenOrdersRequest{
 		Symbol:     order.Symbol.String(),
-		RecvWindow: 5 * time.Second,
+		RecvWindow: 10 * time.Second,
 		Timestamp:  time.Now(),
 	}
 	var openOrders []*binance.ExecutedOrder
@@ -472,7 +472,7 @@ func (bi Binance) CancelOrder(order *models.Order) error {
 	cor := binance.CancelOrderRequest{
 		Symbol:            order.Symbol.String(),
 		OrigClientOrderID: order.ClientOrderID,
-		RecvWindow:        5 * time.Second,
+		RecvWindow:        10 * time.Second,
 		Timestamp:         time.Now(),
 	}
 	err := util.BackoffRetry(5, func() error {
