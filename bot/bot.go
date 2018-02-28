@@ -63,16 +63,16 @@ func main() {
 		if apiKey == "" || secret == "" {
 			return cli.NewExitError("api key and secret is required", 0)
 		}
-
-		mainAsset := models.Asset(assetString)
-		exchange := CreateExchange(apiKey, secret, mainAsset, dryrun)
-		analyzer := CreateAnalyzer(mainAsset, exchange.GetCharge(), maxqty, threshold)
-		arbitrader := CreateTrader(exchange, analyzer, mainAsset)
-		arbitrader.Run()
 		return nil
 	}
 
 	app.Run(os.Args)
+
+	mainAsset := models.Asset(assetString)
+	exchange := CreateExchange(apiKey, secret, mainAsset, dryrun)
+	analyzer := CreateAnalyzer(mainAsset, exchange.GetCharge(), maxqty, threshold)
+	arbitrader := CreateTrader(exchange, analyzer, mainAsset)
+	arbitrader.Run()
 }
 
 func CreateExchange(apikey string, secret string, mainAsset models.Asset, dryRun bool) usecase.Exchange {

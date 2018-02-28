@@ -28,19 +28,19 @@ const (
 )
 
 type Symbol struct {
-	Text           string
-	BaseAsset      Asset
-	BasePrecision  int
-	QuoteAsset     Asset
-	QuotePrecision int
-	MaxPrice       float64
-	MinPrice       float64
-	TickSize       float64
-	MaxQty         float64
-	MinQty         float64
-	StepSize       float64
-	MinNotional    float64
-	Volume         float64
+	Text           string  `json:"text"`
+	BaseAsset      Asset   `json:"base_asset"`
+	BasePrecision  int     `json:"base_precision"`
+	QuoteAsset     Asset   `json:"quote_asset"`
+	QuotePrecision int     `json:"quote_precision"`
+	MaxPrice       float64 `json:"max_price"`
+	MinPrice       float64 `json:"min_price"`
+	TickSize       float64 `json:"tick_size"`
+	MaxQty         float64 `json:"max_qty"`
+	MinQty         float64 `json:"min_qty"`
+	StepSize       float64 `json:"stepsize"`
+	MinNotional    float64 `json:"min_notional"`
+	Volume         float64 `json:"volume"`
 }
 
 func (s Symbol) String() string {
@@ -73,14 +73,14 @@ type Order struct {
 }
 
 type Depth struct {
-	BaseAsset  Asset
-	QuoteAsset Asset
-	Symbol     Symbol
-	BidPrice   float64
-	AskPrice   float64
-	BidQty     float64
-	AskQty     float64
-	Time       time.Time
+	BaseAsset  Asset     `json:"base_asset"`
+	QuoteAsset Asset     `json:"quote_asset"`
+	Symbol     Symbol    `json:"symbol"`
+	BidPrice   float64   `json:"bid_price"`
+	AskPrice   float64   `json:"ask_price"`
+	BidQty     float64   `json:"bid_qty"`
+	AskQty     float64   `json:"ask_qty"`
+	Time       time.Time `json:"time"`
 }
 
 type RotationDepth struct {
