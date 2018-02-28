@@ -5,8 +5,6 @@ import (
 	"sync"
 
 	models "github.com/OopsMouse/arbitgo/models"
-	"github.com/OopsMouse/arbitgo/util"
-	log "github.com/sirupsen/logrus"
 )
 
 func (arbit *Arbitrader) Analyze(depthList []*models.Depth) {
@@ -20,13 +18,13 @@ func (arbit *Arbitrader) Analyze(depthList []*models.Depth) {
 		return
 	}
 
-	log.Info("Found arbit orders")
-	util.LogOrders(orders)
+	// log.Info("Found arbit orders")
+	// util.LogOrders(orders)
 
-	orders, err := arbit.ValidateOrders(orders, balance.Free)
-	if err != nil {
-		return
-	}
+	// orders, err := arbit.ValidateOrders(orders, balance.Free)
+	// if err != nil {
+	// 	return
+	// }
 	go arbit.StartTreding(orders)
 }
 

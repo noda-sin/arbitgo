@@ -82,6 +82,7 @@ func depthChannel(host *string) chan *models.Depth {
 	log.Printf("connecting to %s", u.String())
 
 	go func() {
+		defer close(dch)
 		for {
 			c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 			if err != nil {
@@ -89,7 +90,6 @@ func depthChannel(host *string) chan *models.Depth {
 			}
 			go func() {
 				defer c.Close()
-				defer close(dch)
 				for {
 					_, bytes, err := c.ReadMessage()
 					if err != nil {
