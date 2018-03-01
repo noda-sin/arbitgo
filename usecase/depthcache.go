@@ -31,7 +31,11 @@ func (c *DepthCache) Set(depth *models.Depth) {
 func (c *DepthCache) Get(symbol models.Symbol) *models.Depth {
 	defer c.lock.Unlock()
 	c.lock.Lock()
-	return c.cache[symbol.String()]
+	depth := c.cache[symbol.String()]
+	if time.Now().Sub(depth.Time) < c.expireTime {
+		return depth
+	}
+	return nil
 }
 
 func (c *DepthCache) GetAllDepthes() []*models.Depth {

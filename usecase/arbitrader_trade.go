@@ -39,18 +39,6 @@ func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
 	currentOrders := orders
 	currentOrder := currentOrders[0]
 
-	// var currentAsset models.Asset
-	// if currentOrder.Side == models.SideBuy {
-	// 	currentAsset = currentOrder.Symbol.QuoteAsset
-	// } else {
-	// 	currentAsset = currentOrder.Symbol.BaseAsset
-	// }
-
-	// arbit.LoadBalances()
-	// currentBalance := arbit.GetBalance(currentAsset)
-	// currentOrder.OrderType = models.TypeMarket
-	// currentOrder.Qty = util.Floor(currentBalance.Free, currentOrder.Symbol.StepSize)
-
 	go func() {
 		defer close(done)
 
@@ -74,7 +62,7 @@ func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
 		waitingTotalQty := currentOrder.Qty
 		childTrades := []chan struct{}{}
 
-		for i := 0; i < 18000; i++ {
+		for i := 0; i < 300; i++ {
 			var executedQty float64
 			executedQty, err = arbit.Exchange.ConfirmOrder(&currentOrder)
 			if err != nil {
@@ -102,7 +90,7 @@ func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
 				var childOrders []models.Order
 				log.Info("START - create child orders")
 
-				currentOrders, childOrders, err := arbit.MarketAnalyzer.SplitOrders(orders, executedQty)
+				currentOrders, childOrders, err = arbit.MarketAnalyzer.SplitOrders(orders, executedQty)
 				if err == nil {
 					currentOrder = currentOrders[0]
 
@@ -169,7 +157,7 @@ func (arbit *Arbitrader) RecoveryOrder(order models.Order) {
 		currentAsset = order.Symbol.BaseAsset
 	}
 
-	log.WithField("ID", order.ClientOrderID).Info("Current asset : ", currentAsset)
+	log.Info("Current asset : ", currentAsset)
 
 	if currentAsset == arbit.MainAsset {
 		log.Info("Current asset is same main asset")

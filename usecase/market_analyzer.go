@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"fmt"
+	"strconv"
 
 	models "github.com/OopsMouse/arbitgo/models"
 	"github.com/OopsMouse/arbitgo/util"
@@ -521,8 +522,70 @@ func (ma *MarketAnalyzer) SplitOrders(parentOrders []models.Order, qty float64) 
 }
 
 func (ma *MarketAnalyzer) ValidateOrders(orders []models.Order, depthes []*models.Depth) bool {
-	sortedDepth := []*models.Depth{}
+	// sortedDepth := []*models.Depth{}
+	// for _, order := range orders {
+	// 	for _, depth := range depthes {
+	// 		if order.Symbol.String() == depth.Symbol.String() {
+	// 			sortedDepth = append(sortedDepth, depth)
+	// 		}
+	// 	}
+	// }
+
+	// start := orders[0].Qty
+	// currentQty := start
+	// for i, depth := range sortedDepth {
+	// 	order := orders[i]
+	// 	if order.Side == models.SideBuy {
+	// 		currentQty = util.Floor(currentQty, depth.Symbol.StepSize) / depth.AskPrice
+	// 	} else {
+	// 		currentQty = util.Floor(currentQty, depth.Symbol.StepSize) * depth.BidPrice
+	// 	}
+	// }
+	// end := currentQty
+	// if end > start {
+	// 	return true
+	// }
+	// return false
 	for _, order := range orders {
+		for _, depth := range depthes {
+			if order.Symbol.String() == depth.Symbol.String() {
+				if order.Side == models.SideBuy {
+					log.Info("----------------- depth #" + strconv.Itoa(order.Step) + " ----------------")
+					log.Info(" Symbol   : ", order.Symbol)
+					log.Info(" Side     : ", order.Side)
+					log.Info(" Price    : ", order.Price, " vs ", depth.AskPrice)
+					log.Info(" Quantity : ", order.Qty, " vs ", depth.AskQty)
+					log.Info(" Time     : ", depth.Time.Sub(order.SourceDepth.Time))
+					log.Info("------------------------------------------")
+
+					ok := (depth.AskPrice <= order.Price) && (depth.AskQty >= order.Qty)
+					if ok == false {
+						return false
+					}
+				} else {
+					log.Info("----------------- depth #" + strconv.Itoa(order.Step) + " ----------------")
+					log.Info(" Symbol   : ", order.Symbol)
+					log.Info(" Side     : ", order.Side)
+					log.Info(" Price    : ", order.Price, " vs ", depth.BidPrice)
+					log.Info(" Quantity : ", order.Qty, " vs ", depth.BidQty)
+					log.Info(" Time     : ", depth.Time.Sub(order.SourceDepth.Time))
+					log.Info("-------------------------------------------")
+
+					ok := (depth.BidPrice >= order.Price) && (depth.BidQty >= order.Qty)
+					if ok == false {
+						return false
+					}
+				}
+				break
+			}
+		}
+	}
+	return true
+}
+
+func (ma *MarketAnalyzer) ReplaceOrders(tradeOrder *models.TradeOrder, depthes []*models.Depth, currBalance float64) (*models.TradeOrder, bool) {
+	sortedDepth := []*models.Depth{}
+	for _, order := range tradeOrder.Orders {
 		for _, depth := range depthes {
 			if order.Symbol.String() == depth.Symbol.String() {
 				sortedDepth = append(sortedDepth, depth)
@@ -530,19 +593,17 @@ func (ma *MarketAnalyzer) ValidateOrders(orders []models.Order, depthes []*model
 		}
 	}
 
-	start := orders[0].Qty
-	currentQty := start
-	for i, depth := range sortedDepth {
-		order := orders[i]
-		if order.Side == models.SideBuy {
-			currentQty = util.Floor(currentQty, depth.Symbol.StepSize) / depth.AskPrice
-		} else {
-			currentQty = util.Floor(currentQty, depth.Symbol.StepSize) * depth.BidPrice
-		}
+	rotateDepth := &models.RotationDepth{
+		DepthList: sortedDepth,
 	}
-	end := currentQty
-	if end > start {
-		return true
+
+	score, newOrders := ma.GenerateOrders(rotateDepth, currBalance)
+	if newOrders == nil {
+		return nil, false
 	}
-	return false
+
+	return &models.TradeOrder{
+		Score:  score,
+		Orders: newOrders,
+	}, true
 }

@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"fmt"
-	"sync"
 
 	models "github.com/OopsMouse/arbitgo/models"
 )
@@ -18,46 +17,36 @@ func (arbit *Arbitrader) Analyze(depthList []*models.Depth) {
 		return
 	}
 
-	// log.Info("Found arbit orders")
-	// util.LogOrders(orders)
-
-	// orders, err := arbit.ValidateOrders(orders, balance.Free)
-	// if err != nil {
-	// 	return
-	// }
+	tradeOrder, err := arbit.ValidateOrders(tradeOrder, balance.Free)
+	if err != nil {
+		return
+	}
 
 	go arbit.StartTreding(tradeOrder)
 }
 
-func (arbit *Arbitrader) ValidateOrders(orders []models.Order, currBalance float64) ([]models.Order, error) {
+func (arbit *Arbitrader) ValidateOrders(tradeOrder *models.TradeOrder, currBalance float64) (*models.TradeOrder, error) {
 	depthes := []*models.Depth{}
-	depch := make(chan *models.Depth)
-	errch := make(chan error)
 
-	defer close(depch)
-	defer close(errch)
-
-	wg := &sync.WaitGroup{}
-
-	m := new(sync.Mutex)
-
-	for _, order := range orders {
-		wg.Add(1)
-		go func(order models.Order) {
-			defer m.Unlock()
-			defer wg.Done()
-			depth, _ := arbit.Exchange.GetDepth(order.Symbol)
-			m.Lock()
-			arbit.Cache.Set(depth)
+	for _, order := range tradeOrder.Orders {
+		depth := arbit.Cache.Get(order.Symbol)
+		if depth != nil {
 			depthes = append(depthes, depth)
-		}(order)
+		}
 	}
 
-	wg.Wait()
-
-	ok := arbit.MarketAnalyzer.ValidateOrders(orders, depthes)
-	if ok == true {
-		return orders, nil
+	if len(tradeOrder.Orders) != len(depthes) {
+		return nil, fmt.Errorf("Failed to get new depthes")
 	}
-	return nil, fmt.Errorf("Arbit orders destroyed")
+
+	// ok := arbit.MarketAnalyzer.ValidateOrders(tradeOrder.Orders, depthes)
+	// if ok == true {
+	// 	return tradeOrder, nil
+	// }
+
+	newTradeOrder, ok := arbit.MarketAnalyzer.ReplaceOrders(tradeOrder, depthes, currBalance)
+	if ok == false {
+		return nil, fmt.Errorf("Arbit orders destroyed")
+	}
+	return newTradeOrder, nil
 }
