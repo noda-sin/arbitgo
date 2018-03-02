@@ -24,7 +24,7 @@ func main() {
 
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
-			Name:        "dryrun, d",
+			Name:        "dryrun, dry, d",
 			Usage:       "dry run mode",
 			Destination: &dryrun,
 		},
@@ -64,8 +64,7 @@ func main() {
 
 	mainAsset := models.Asset(assetString)
 	exchange := newExchange(apiKey, secret, mainAsset, dryrun)
-	analyzer := newAnalyzer(mainAsset, exchange.GetCharge())
-	arbitrader := newTrader(exchange, analyzer, mainAsset, &server)
+	arbitrader := newTrader(exchange, mainAsset, &server)
 	arbitrader.Run()
 }
 
@@ -91,17 +90,9 @@ func newExchange(apikey string, secret string, mainAsset models.Asset, dryRun bo
 	return binance
 }
 
-func newAnalyzer(mainAsset models.Asset, charge float64) usecase.MarketAnalyzer {
-	return usecase.NewMarketAnalyzer(
-		mainAsset,
-		charge,
-	)
-}
-
-func newTrader(exchange usecase.Exchange, analyzer usecase.MarketAnalyzer, mainAsset models.Asset, server *string) *usecase.Arbitrader {
+func newTrader(exchange usecase.Exchange, mainAsset models.Asset, server *string) *usecase.Arbitrader {
 	return usecase.NewArbitrader(
 		exchange,
-		analyzer,
 		mainAsset,
 		server,
 	)

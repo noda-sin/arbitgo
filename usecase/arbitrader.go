@@ -28,10 +28,15 @@ type Arbitrader struct {
 	ServerHost *string
 }
 
-func NewArbitrader(ex Exchange, ma MarketAnalyzer, mainAsset models.Asset, serverHost *string) *Arbitrader {
+func NewArbitrader(ex Exchange, mainAsset models.Asset, serverHost *string) *Arbitrader {
+	analyzer := MarketAnalyzer{
+		MainAsset: mainAsset,
+		Charge:    ex.GetCharge(),
+	}
+
 	return &Arbitrader{
 		Exchange:       ex,
-		MarketAnalyzer: ma,
+		MarketAnalyzer: analyzer,
 		MainAsset:      mainAsset,
 		Status:         TradeWaiting,
 		StatusLock:     new(sync.Mutex),
