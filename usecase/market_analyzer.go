@@ -14,16 +14,12 @@ import (
 type MarketAnalyzer struct {
 	MainAsset models.Asset
 	Charge    float64
-	MaxQty    float64
-	Threshold float64
 }
 
-func NewMarketAnalyzer(mainAsset models.Asset, charge float64, maxqty float64, threshold float64) MarketAnalyzer {
+func NewMarketAnalyzer(mainAsset models.Asset, charge float64) MarketAnalyzer {
 	return MarketAnalyzer{
 		MainAsset: mainAsset,
 		Charge:    charge,
-		MaxQty:    maxqty,
-		Threshold: threshold,
 	}
 }
 
@@ -42,7 +38,7 @@ func (ma *MarketAnalyzer) ArbitrageOrders(depthList []*models.Depth, currBalance
 	}
 
 	if bestOrders == nil ||
-		bestScore <= ma.Threshold {
+		bestScore <= 0 {
 		return nil
 	}
 
@@ -123,7 +119,6 @@ func GenerateRotationDepthList(mainAsset models.Asset, depthList []*models.Depth
 
 func (ma *MarketAnalyzer) GenerateOrders(rotateDepth *models.RotationDepth, currentBalance float64) (float64, []models.Order) {
 	mainAsset := ma.MainAsset
-	maxLimitQty := ma.MaxQty
 	charge := ma.Charge
 
 	if rotateDepth == nil || len(rotateDepth.DepthList) == 0 {
@@ -215,11 +210,6 @@ func (ma *MarketAnalyzer) GenerateOrders(rotateDepth *models.RotationDepth, curr
 	// お財布内のMainAsset量の方が少ない場合は、お財布内全部を利用値とする
 	if currentBalance < minMainQty {
 		minMainQty = currentBalance
-	}
-
-	// 利用制限上限に触れている場合は、制限値を利用値とする
-	if maxLimitQty != 0 && maxLimitQty < minMainQty {
-		minMainQty = maxLimitQty
 	}
 
 	if symbol1.MinNotional > minMainQty {

@@ -59,7 +59,6 @@ func (arbit *Arbitrader) Run() {
 	log.Info(" Main asset         : ", arbit.MainAsset)
 	log.Info(" Main asset balance : ", arbit.GetBalance(arbit.MainAsset).Free)
 	log.Info(" Exchange charge    : ", arbit.MarketAnalyzer.Charge)
-	log.Info(" Threshold          : ", arbit.MarketAnalyzer.Threshold)
 	log.Info("------------------------------------------")
 
 	var dch chan *models.Depth

@@ -20,8 +20,6 @@ func main() {
 	var apiKey string
 	var secret string
 	var assetString string
-	var maxqty float64
-	var threshold float64
 	var server string
 
 	app.Flags = []cli.Flag{
@@ -48,16 +46,6 @@ func main() {
 			Destination: &assetString,
 			Value:       "BTC",
 		},
-		cli.Float64Flag{
-			Name:        "maxqty, m",
-			Usage:       "max qty of main asset",
-			Destination: &threshold,
-		},
-		cli.Float64Flag{
-			Name:        "threshold, t",
-			Usage:       "profit threshold",
-			Destination: &threshold,
-		},
 		cli.StringFlag{
 			Name:        "server",
 			Usage:       "server host",
@@ -76,7 +64,7 @@ func main() {
 
 	mainAsset := models.Asset(assetString)
 	exchange := newExchange(apiKey, secret, mainAsset, dryrun)
-	analyzer := newAnalyzer(mainAsset, exchange.GetCharge(), maxqty, threshold)
+	analyzer := newAnalyzer(mainAsset, exchange.GetCharge())
 	arbitrader := newTrader(exchange, analyzer, mainAsset, &server)
 	arbitrader.Run()
 }
@@ -103,12 +91,10 @@ func newExchange(apikey string, secret string, mainAsset models.Asset, dryRun bo
 	return binance
 }
 
-func newAnalyzer(mainAsset models.Asset, charge float64, maxqty float64, threshold float64) usecase.MarketAnalyzer {
+func newAnalyzer(mainAsset models.Asset, charge float64) usecase.MarketAnalyzer {
 	return usecase.NewMarketAnalyzer(
 		mainAsset,
 		charge,
-		maxqty,
-		threshold,
 	)
 }
 
