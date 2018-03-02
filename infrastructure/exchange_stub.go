@@ -2,11 +2,9 @@ package infrastructure
 
 import (
 	"fmt"
-	"math/rand"
-	"time"
 
 	models "github.com/OopsMouse/arbitgo/models"
-	"github.com/OopsMouse/arbitgo/util"
+	log "github.com/sirupsen/logrus"
 )
 
 type ExchangeStub struct {
@@ -78,21 +76,53 @@ func (ex ExchangeStub) SendOrder(order *models.Order) error {
 }
 
 func (ex ExchangeStub) ConfirmOrder(order *models.Order) (float64, error) {
-	rand.Seed(time.Now().UnixNano())
-	randInt := rand.Intn(15)
-	if randInt > 7 {
-		return 0, nil
-	} else if randInt <= 7 && randInt < 5 {
-		ex.CommitOrder(order, order.Qty)
-		return order.Qty, nil
-	} else {
-		commitQty := util.Floor(order.Qty*float64(randInt)/15, order.Symbol.StepSize)
-		ex.CommitOrder(order, commitQty)
-		return commitQty, nil
+	depth, err := ex.Exchange.GetDepth(order.Symbol)
+	if err != nil {
+		return 0, err
 	}
+
+	if order.OrderType == models.TypeMarket {
+		err := ex.CommitOrder(order, depth, order.Qty)
+		if err != nil {
+			return 0, err
+		}
+		return order.Qty, nil
+	}
+
+	var commitQty = 0.0
+	if order.Side == models.SideBuy {
+		log.Info("Symbol : ", order.Symbol.String(), " Price : ", depth.AskPrice, " Quantity : ", depth.AskQty)
+		if order.Price >= depth.AskPrice {
+			if order.Qty <= depth.AskQty {
+				commitQty = order.Qty
+			} else {
+				commitQty = order.Qty - depth.AskQty
+			}
+		} else {
+			commitQty = 0
+		}
+	} else {
+		log.Info("Symbol : ", order.Symbol.String(), " Price : ", depth.BidPrice, " Quantity : ", depth.BidQty)
+		if order.Price <= depth.BidPrice {
+			if order.Qty <= depth.BidQty {
+				commitQty = order.Qty
+			} else {
+				commitQty = order.Qty - depth.BidQty
+			}
+		} else {
+			commitQty = 0
+		}
+	}
+
+	err = ex.CommitOrder(order, depth, commitQty)
+	if err != nil {
+		return 0, err
+	}
+	return commitQty, nil
 }
 
-func (ex ExchangeStub) CommitOrder(order *models.Order, qty float64) error {
+func (ex ExchangeStub) CommitOrder(order *models.Order, depth *models.Depth, qty float64) error {
+
 	if order.Side == models.SideBuy {
 		balance, err := ex.GetBalance(order.Symbol.QuoteAsset)
 		if err != nil {
@@ -105,8 +135,9 @@ func (ex ExchangeStub) CommitOrder(order *models.Order, qty float64) error {
 			}
 			price = order.Price
 		} else {
-			price = order.Symbol.MinPrice
+			price = depth.AskPrice
 		}
+
 		ex.SubBalance(order.Symbol.QuoteAsset, qty*price)
 		ex.AddBalance(order.Symbol.BaseAsset, qty)
 	} else {
@@ -121,8 +152,9 @@ func (ex ExchangeStub) CommitOrder(order *models.Order, qty float64) error {
 			}
 			price = order.Price
 		} else {
-			price = order.Symbol.MinPrice
+			price = depth.BidPrice
 		}
+
 		ex.AddBalance(order.Symbol.QuoteAsset, qty*price)
 		ex.SubBalance(order.Symbol.BaseAsset, qty)
 	}

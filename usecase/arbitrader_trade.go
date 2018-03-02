@@ -103,6 +103,8 @@ func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
 					childTrade := arbit.TradeOrder(childOrders)
 					childTrades = append(childTrades, childTrade)
 				}
+			} else {
+				// 別ルート
 			}
 			time.Sleep(1 * time.Second)
 		}
