@@ -8,33 +8,33 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (arbit *Arbitrader) StartTreding(tradeOrder *models.TradeOrder) {
-	arbit.StatusLock.Lock()
-	if arbit.Status == TradeRunning {
-		arbit.StatusLock.Unlock()
+func (trader *Trader) StartTreding(tradeOrder *models.TradeOrder) {
+	trader.StatusLock.Lock()
+	if trader.Status == TradeRunning {
+		trader.StatusLock.Unlock()
 		return
 	}
 
-	arbit.Status = TradeRunning
-	arbit.StatusLock.Unlock()
+	trader.Status = TradeRunning
+	trader.StatusLock.Unlock()
 	go func() {
 		log.Info("Starting trade ....")
 		log.Info("Score : ", tradeOrder.Score)
-		arbit.LoadBalances()
-		log.Info(arbit.MainAsset, " : ", arbit.GetBalance(arbit.MainAsset).Free)
+		trader.LoadBalances()
+		log.Info(trader.MainAsset, " : ", trader.GetBalance(trader.MainAsset).Free)
 
-		<-arbit.TradeOrder(tradeOrder.Orders)
+		<-trader.TradeOrder(tradeOrder.Orders)
 
-		arbit.StatusLock.Lock()
-		arbit.Status = TradeWaiting
-		arbit.StatusLock.Unlock()
+		trader.StatusLock.Lock()
+		trader.Status = TradeWaiting
+		trader.StatusLock.Unlock()
 
-		arbit.LoadBalances()
-		log.Info(arbit.MainAsset, " : ", arbit.GetBalance(arbit.MainAsset).Free)
+		trader.LoadBalances()
+		log.Info(trader.MainAsset, " : ", trader.GetBalance(trader.MainAsset).Free)
 	}()
 }
 
-func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
+func (trader *Trader) TradeOrder(orders []models.Order) chan struct{} {
 	done := make(chan struct{})
 	currentOrders := orders
 	currentOrder := currentOrders[0]
@@ -49,12 +49,12 @@ func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
 		log.Info("START - send order")
 		util.LogOrder(currentOrder)
 
-		err := arbit.Exchange.SendOrder(&currentOrder)
+		err := trader.Exchange.SendOrder(&currentOrder)
 		log.Info("END - send order")
 
 		if err != nil {
 			log.WithError(err).Error("Send order failed")
-			arbit.RecoveryOrder(currentOrder)
+			trader.RecoveryOrder(currentOrder)
 			return
 		}
 
@@ -64,7 +64,7 @@ func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
 
 		for i := 0; i < 300; i++ {
 			var executedQty float64
-			executedQty, err = arbit.Exchange.ConfirmOrder(&currentOrder)
+			executedQty, err = trader.Exchange.ConfirmOrder(&currentOrder)
 			if err != nil {
 				log.WithError(err).Error("Confirm order failed")
 				continue
@@ -90,7 +90,7 @@ func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
 				var childOrders []models.Order
 				log.Info("START - create child orders")
 
-				currentOrders, childOrders, err = arbit.MarketAnalyzer.SplitOrders(orders, executedQty)
+				currentOrders, childOrders, err = trader.MarketAnalyzer.SplitOrders(orders, executedQty)
 				if err == nil {
 					currentOrder = currentOrders[0]
 
@@ -100,7 +100,7 @@ func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
 					util.LogOrders(childOrders)
 
 					log.Info("END - create child orders")
-					childTrade := arbit.TradeOrder(childOrders)
+					childTrade := trader.TradeOrder(childOrders)
 					childTrades = append(childTrades, childTrade)
 				}
 			} else {
@@ -120,7 +120,7 @@ func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
 			log.Info("START - Cancel order")
 			util.LogOrder(currentOrder)
 
-			err := arbit.Exchange.CancelOrder(&currentOrder)
+			err := trader.Exchange.CancelOrder(&currentOrder)
 			log.Info("END - Cancel order")
 
 			// TODO: すでに約定していた場合の処理
@@ -131,7 +131,7 @@ func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
 				panic(err)
 			}
 
-			arbit.RecoveryOrder(models.Order{
+			trader.RecoveryOrder(models.Order{
 				Symbol:    currentOrder.Symbol,
 				Side:      currentOrder.Side,
 				OrderType: currentOrder.OrderType,
@@ -145,13 +145,13 @@ func (arbit *Arbitrader) TradeOrder(orders []models.Order) chan struct{} {
 			return
 		}
 
-		<-arbit.TradeOrder(currentOrders[1:])
+		<-trader.TradeOrder(currentOrders[1:])
 	}()
 
 	return done
 }
 
-func (arbit *Arbitrader) RecoveryOrder(order models.Order) {
+func (trader *Trader) RecoveryOrder(order models.Order) {
 	var currentAsset models.Asset
 	if order.Side == models.SideBuy {
 		currentAsset = order.Symbol.QuoteAsset
@@ -161,7 +161,7 @@ func (arbit *Arbitrader) RecoveryOrder(order models.Order) {
 
 	log.Info("Current asset : ", currentAsset)
 
-	if currentAsset == arbit.MainAsset {
+	if currentAsset == trader.MainAsset {
 		log.Info("Current asset is same main asset")
 		log.Info("Recovery is unnecessary")
 
@@ -171,10 +171,10 @@ func (arbit *Arbitrader) RecoveryOrder(order models.Order) {
 
 	log.Info("Finding orders to recovery")
 
-	orders, err := arbit.MarketAnalyzer.ForceChangeOrders(
-		arbit.Exchange.GetSymbols(),
+	orders, err := trader.MarketAnalyzer.ForceChangeOrders(
+		trader.Exchange.GetSymbols(),
 		currentAsset,
-		arbit.MainAsset,
+		trader.MainAsset,
 	)
 
 	if err != nil {
@@ -199,7 +199,7 @@ func (arbit *Arbitrader) RecoveryOrder(order models.Order) {
 
 		log.Info("Check balance of ", currentAsset)
 
-		currentBalance, _ := arbit.Exchange.GetBalance(currentAsset)
+		currentBalance, _ := trader.Exchange.GetBalance(currentAsset)
 
 		log.Info(currentAsset, " : ", currentBalance.Free)
 
@@ -208,7 +208,7 @@ func (arbit *Arbitrader) RecoveryOrder(order models.Order) {
 		log.Info("START - send recovery order")
 		util.LogOrder(order)
 
-		err = arbit.Exchange.SendOrder(&order)
+		err = trader.Exchange.SendOrder(&order)
 
 		log.Info("END - send recovery order")
 

@@ -6,7 +6,7 @@ import (
 	models "github.com/OopsMouse/arbitgo/models"
 )
 
-func (arbit *Arbitrader) Analyze(depthList []*models.Depth) {
+func (arbit *Trader) Analyze(depthList []*models.Depth) {
 	balance := arbit.GetBalance(arbit.MainAsset)
 	tradeOrder := arbit.MarketAnalyzer.ArbitrageOrders(
 		depthList,
@@ -25,7 +25,7 @@ func (arbit *Arbitrader) Analyze(depthList []*models.Depth) {
 	go arbit.StartTreding(tradeOrder)
 }
 
-func (arbit *Arbitrader) ValidateOrders(tradeOrder *models.TradeOrder, currBalance float64) (*models.TradeOrder, error) {
+func (arbit *Trader) ValidateOrders(tradeOrder *models.TradeOrder, currBalance float64) (*models.TradeOrder, error) {
 	depthes := []*models.Depth{}
 
 	for _, order := range tradeOrder.Orders {

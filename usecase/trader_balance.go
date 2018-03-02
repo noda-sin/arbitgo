@@ -5,7 +5,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (arbit *Arbitrader) LoadBalances() {
+func (arbit *Trader) LoadBalances() {
 	balances, err := arbit.Exchange.GetBalances()
 	if err != nil {
 		return
@@ -13,7 +13,7 @@ func (arbit *Arbitrader) LoadBalances() {
 	arbit.Balances = balances
 }
 
-func (arbit *Arbitrader) GetBalance(asset models.Asset) *models.Balance {
+func (arbit *Trader) GetBalance(asset models.Asset) *models.Balance {
 	for _, balance := range arbit.Balances {
 		if string(balance.Asset) == string(asset) {
 			return balance
@@ -22,7 +22,7 @@ func (arbit *Arbitrader) GetBalance(asset models.Asset) *models.Balance {
 	return nil
 }
 
-func (arbit *Arbitrader) LogBalances() {
+func (arbit *Trader) LogBalances() {
 	log.Info("----------------- Balances -----------------")
 
 	for _, balance := range arbit.Balances {

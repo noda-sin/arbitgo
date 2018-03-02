@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	models "github.com/OopsMouse/arbitgo/models"
+	"github.com/OopsMouse/arbitgo/util"
 	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
 )
@@ -17,30 +18,30 @@ const (
 	TradeRunning = TradeStatus("Running")
 )
 
-type Arbitrader struct {
+type Trader struct {
 	Exchange
 	MarketAnalyzer
 	MainAsset  models.Asset
 	Status     TradeStatus
 	StatusLock *sync.Mutex
-	Cache      *DepthCache
+	Cache      *util.DepthCache
 	Balances   []*models.Balance
 	ServerHost *string
 }
 
-func NewArbitrader(ex Exchange, mainAsset models.Asset, serverHost *string) *Arbitrader {
+func NewTrader(ex Exchange, mainAsset models.Asset, serverHost *string) *Trader {
 	analyzer := MarketAnalyzer{
 		MainAsset: mainAsset,
 		Charge:    ex.GetCharge(),
 	}
 
-	return &Arbitrader{
+	return &Trader{
 		Exchange:       ex,
 		MarketAnalyzer: analyzer,
 		MainAsset:      mainAsset,
 		Status:         TradeWaiting,
 		StatusLock:     new(sync.Mutex),
-		Cache:          NewDepthCache(),
+		Cache:          util.NewDepthCache(),
 		Balances:       []*models.Balance{},
 		ServerHost:     serverHost,
 	}
@@ -54,29 +55,29 @@ func logInit() {
 	log.SetFormatter(format)
 }
 
-func (arbit *Arbitrader) Run() {
+func (trader *Trader) Run() {
 	logInit()
-	log.Info("Starting Arbitrader ....")
+	log.Info("Starting Trader ....")
 
-	arbit.LoadBalances()
+	trader.LoadBalances()
 
 	log.Info("----------------- params -----------------")
-	log.Info(" Main asset         : ", arbit.MainAsset)
-	log.Info(" Main asset balance : ", arbit.GetBalance(arbit.MainAsset).Free)
-	log.Info(" Exchange charge    : ", arbit.MarketAnalyzer.Charge)
+	log.Info(" Main asset         : ", trader.MainAsset)
+	log.Info(" Main asset balance : ", trader.GetBalance(trader.MainAsset).Free)
+	log.Info(" Exchange charge    : ", trader.MarketAnalyzer.Charge)
 	log.Info("------------------------------------------")
 
 	var dch chan *models.Depth
-	if arbit.ServerHost == nil || *arbit.ServerHost == "" {
-		dch = arbit.Exchange.GetDepthOnUpdate()
+	if trader.ServerHost == nil || *trader.ServerHost == "" {
+		dch = trader.Exchange.GetDepthOnUpdate()
 	} else {
-		dch = depthChannel(arbit.ServerHost)
+		dch = depthChannel(trader.ServerHost)
 	}
 
 	for {
 		depth := <-dch
-		arbit.Cache.Set(depth)
-		go arbit.Analyze(arbit.Cache.GetRelevantDepthes(depth))
+		trader.Cache.Set(depth)
+		go trader.Analyze(trader.Cache.GetRelevantDepthes(depth))
 	}
 }
 

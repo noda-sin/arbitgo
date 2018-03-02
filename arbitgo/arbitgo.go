@@ -90,8 +90,8 @@ func newExchange(apikey string, secret string, mainAsset models.Asset, dryRun bo
 	return binance
 }
 
-func newTrader(exchange usecase.Exchange, mainAsset models.Asset, server *string) *usecase.Arbitrader {
-	return usecase.NewArbitrader(
+func newTrader(exchange usecase.Exchange, mainAsset models.Asset, server *string) *usecase.Trader {
+	return usecase.NewTrader(
 		exchange,
 		mainAsset,
 		server,
