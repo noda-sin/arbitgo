@@ -5,222 +5,167 @@ import (
 
 	models "github.com/OopsMouse/arbitgo/models"
 	"github.com/OopsMouse/arbitgo/util"
+	"github.com/rs/xid"
 	log "github.com/sirupsen/logrus"
 )
 
-func (trader *Trader) StartTreding(tradeOrder *models.TradeOrder) {
-	trader.StatusLock.Lock()
-	if trader.Status == TradeRunning {
-		trader.StatusLock.Unlock()
-		return
+func (trader *Trader) runTrader() {
+	tradeChan := make(chan *models.Sequence)
+	trader.tradeChan = &tradeChan
+
+	trading := false
+	for {
+		seq := <-*trader.tradeChan
+		if trading {
+			continue
+		}
+		trading = true
+		go func() {
+			defer func() {
+				trading = false
+			}()
+
+			log.Info("Start trade")
+			trader.PrintBalance(trader.MainAsset)
+
+			<-trader.doSequence(seq)
+
+			trader.PrintBalance(trader.MainAsset)
+			log.Info("End trade")
+		}()
 	}
-
-	trader.Status = TradeRunning
-	trader.StatusLock.Unlock()
-	go func() {
-		log.Info("Starting trade ....")
-		log.Info("Score : ", tradeOrder.Score)
-		trader.LoadBalances()
-		log.Info(trader.MainAsset, " : ", trader.GetBalance(trader.MainAsset).Free)
-
-		<-trader.TradeOrder(tradeOrder.Orders)
-
-		trader.StatusLock.Lock()
-		trader.Status = TradeWaiting
-		trader.StatusLock.Unlock()
-
-		trader.LoadBalances()
-		log.Info(trader.MainAsset, " : ", trader.GetBalance(trader.MainAsset).Free)
-	}()
 }
 
-func (trader *Trader) TradeOrder(orders []models.Order) chan struct{} {
+func (trader *Trader) sendOrder(order models.Order) {
+	log.Info("START - send order")
+	util.LogOrder(order)
+
+	err := trader.Exchange.SendOrder(&order)
+	log.Info("END - send order")
+
+	if err != nil {
+		panic(err)
+	}
+}
+
+type ConfirmStatus string
+
+const (
+	ALLOK  = ConfirmStatus("ALLOK")
+	PARTOK = ConfirmStatus("PARTOK")
+	ALLNG  = ConfirmStatus("ALLNG")
+)
+
+func (trader *Trader) confirmOrder(order models.Order) ConfirmStatus {
+	for i := 0; i < 12; i++ {
+		executed, err := trader.Exchange.ConfirmOrder(&order)
+		if err != nil {
+			panic(err)
+		}
+
+		if executed == order.Quantity { // 全部OK
+			log.Info("Executed : ", executed)
+			trader.LoadBalances()
+			return ALLOK
+		} else if executed > 0 { // 部分的にOK
+			log.Info("Executed : ", executed)
+			trader.LoadBalances()
+			return PARTOK
+		} else { // 全部だめ
+			log.Info("Executed : ", executed)
+			continue
+		}
+
+		time.Sleep(5 * time.Second)
+	}
+	return ALLNG
+}
+
+func (trader *Trader) cancelOrder(order models.Order) {
+	err := trader.Exchange.CancelOrder(&order)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (trader *Trader) doSequence(seq *models.Sequence) chan struct{} {
 	done := make(chan struct{})
-	currentOrders := orders
-	currentOrder := currentOrders[0]
 
 	go func() {
 		defer close(done)
 
-		if len(orders) == 0 {
+		child := []chan struct{}{}
+		order := trader.newOrder(seq)
+		trader.sendOrder(order)
+		status := trader.confirmOrder(order)
+
+		switch status {
+		case ALLNG:
+			trader.cancelOrder(order)
+			child = append(child, trader.doRecovery(seq))
+			return
+		case PARTOK:
+			trader.cancelOrder(order)
+			child = append(child, trader.doRecovery(seq))
+		}
+
+		if seq.Next == nil {
 			return
 		}
 
-		log.Info("START - send order")
-		util.LogOrder(currentOrder)
-
-		err := trader.Exchange.SendOrder(&currentOrder)
-		log.Info("END - send order")
-
-		if err != nil {
-			log.WithError(err).Error("Send order failed")
-			trader.RecoveryOrder(currentOrder)
-			return
-		}
-
-		executedTotalQty := 0.0
-		waitingTotalQty := currentOrder.Qty
-		childTrades := []chan struct{}{}
-
-		for i := 0; i < 300; i++ {
-			var executedQty float64
-			executedQty, err = trader.Exchange.ConfirmOrder(&currentOrder)
-			if err != nil {
-				log.WithError(err).Error("Confirm order failed")
-				continue
-			}
-
-			if executedQty > 0 {
-				log.Info("------------------------------------------")
-				log.WithField("ID", currentOrder.ClientOrderID).Info("Executed total quantity : ", executedTotalQty, " --> ", executedTotalQty+executedQty)
-				log.WithField("ID", currentOrder.ClientOrderID).Info("Waiting total quantity  : ", waitingTotalQty, " --> ", waitingTotalQty-executedQty)
-				log.Info("------------------------------------------")
-			}
-
-			executedTotalQty += executedQty
-			waitingTotalQty -= executedQty
-
-			if waitingTotalQty <= 0 {
-				log.WithField("ID", currentOrder.ClientOrderID).Info("Success order about entire quantity")
-				break
-			} else if executedTotalQty > 0 && executedTotalQty > currentOrder.Symbol.MinQty && len(currentOrders) > 1 {
-				// 別トレーディングとして注文
-				log.WithField("ID", currentOrder.ClientOrderID).Info("Create a child and trade ahead child trade")
-
-				var childOrders []models.Order
-				log.Info("START - create child orders")
-
-				currentOrders, childOrders, err = trader.MarketAnalyzer.SplitOrders(orders, executedQty)
-				if err == nil {
-					currentOrder = currentOrders[0]
-
-					log.WithField("ID", currentOrder.ClientOrderID).Info("# Parent Orders")
-					util.LogOrders(currentOrders)
-					log.WithField("ID", currentOrder.ClientOrderID).Info("# Child Orders")
-					util.LogOrders(childOrders)
-
-					log.Info("END - create child orders")
-					childTrade := trader.TradeOrder(childOrders)
-					childTrades = append(childTrades, childTrade)
-				}
-			} else {
-				// 別ルート
-			}
-			time.Sleep(1 * time.Second)
-		}
+		child = append(child, trader.doSequence(seq.Next))
 
 		defer func() {
-			for _, c := range childTrades {
+			for _, c := range child {
 				<-c
 			}
 		}()
-
-		if waitingTotalQty > 0 {
-			log.WithField("ID", currentOrder.ClientOrderID).Warn("Order did not end within time limit")
-			log.Info("START - Cancel order")
-			util.LogOrder(currentOrder)
-
-			err := trader.Exchange.CancelOrder(&currentOrder)
-			log.Info("END - Cancel order")
-
-			// TODO: すでに約定していた場合の処理
-
-			if err != nil {
-				log.WithError(err).Error("Cancel order failed")
-				log.Error("Please confirm and manualy cancel order")
-				panic(err)
-			}
-
-			trader.RecoveryOrder(models.Order{
-				Symbol:    currentOrder.Symbol,
-				Side:      currentOrder.Side,
-				OrderType: currentOrder.OrderType,
-				Price:     currentOrder.Price,
-				Qty:       waitingTotalQty,
-			})
-			return
-		}
-
-		if len(currentOrders) == 1 { // FIN
-			return
-		}
-
-		<-trader.TradeOrder(currentOrders[1:])
 	}()
 
 	return done
 }
 
-func (trader *Trader) RecoveryOrder(order models.Order) {
-	var currentAsset models.Asset
-	if order.Side == models.SideBuy {
-		currentAsset = order.Symbol.QuoteAsset
+func (trader *Trader) doRecovery(seq *models.Sequence) chan struct{} {
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		// リカバリする必要なし
+		if seq.From == trader.MainAsset {
+			return
+		}
+
+		for {
+			// MainAssetまでのシーケンスを探索
+			newSeq := trader.bestOfSequence(seq.From, trader.MainAsset, trader.relationalDepthes(seq.Symbol), seq.Target)
+			if newSeq != nil {
+				<-trader.doSequence(newSeq)
+				return
+			}
+			time.Sleep(5 * time.Second)
+		}
+	}()
+
+	return done
+}
+
+func (trader *Trader) newOrder(seq *models.Sequence) models.Order {
+	balance := trader.GetBalance(seq.From).Free
+	var quantity float64
+	if seq.Side == models.SideBuy {
+		quantity = util.Floor(balance/seq.Price, seq.Symbol.StepSize)
 	} else {
-		currentAsset = order.Symbol.BaseAsset
+		quantity = util.Floor(balance, seq.Symbol.StepSize)
 	}
 
-	log.Info("Current asset : ", currentAsset)
-
-	if currentAsset == trader.MainAsset {
-		log.Info("Current asset is same main asset")
-		log.Info("Recovery is unnecessary")
-
-		// nothing to do
-		return
+	order := models.Order{
+		ID:        xid.New().String(),
+		Symbol:    seq.Symbol,
+		OrderType: models.TypeLimit,
+		Price:     seq.Price,
+		Side:      seq.Side,
+		Quantity:  quantity,
 	}
-
-	log.Info("Finding orders to recovery")
-
-	orders, err := trader.MarketAnalyzer.ForceChangeOrders(
-		trader.Exchange.GetSymbols(),
-		currentAsset,
-		trader.MainAsset,
-	)
-
-	if err != nil {
-		log.WithError(err).Error("Find orders to recovery failed")
-		log.Error("Please confirm and manualy recovery !!!")
-
-		panic(err)
-	}
-
-	log.Info("Found orders to recovery")
-	util.LogOrders(orders)
-
-	log.Info("Starting recovery ....")
-
-	for _, order := range orders {
-		var currentAsset models.Asset
-		if order.Side == models.SideBuy {
-			currentAsset = order.Symbol.QuoteAsset
-		} else {
-			currentAsset = order.Symbol.BaseAsset
-		}
-
-		log.Info("Check balance of ", currentAsset)
-
-		currentBalance, _ := trader.Exchange.GetBalance(currentAsset)
-
-		log.Info(currentAsset, " : ", currentBalance.Free)
-
-		order.Qty = util.Floor(currentBalance.Free, order.Symbol.StepSize)
-
-		log.Info("START - send recovery order")
-		util.LogOrder(order)
-
-		err = trader.Exchange.SendOrder(&order)
-
-		log.Info("END - send recovery order")
-
-		if err != nil {
-			log.WithError(err).Error("failed to recovery")
-			log.Error("please confirm and manualy recovery")
-
-			panic(err)
-		}
-	}
-
-	log.Info("Success to recovery")
-
-	return
+	return order
 }

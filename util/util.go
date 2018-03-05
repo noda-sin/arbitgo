@@ -4,7 +4,6 @@ import (
 	"math"
 	"path"
 	"runtime"
-	"strconv"
 	"time"
 
 	"github.com/OopsMouse/arbitgo/models"
@@ -118,19 +117,14 @@ func Floor(a float64, b float64) float64 {
 }
 
 func LogOrder(order models.Order) {
-	log.Info("----------------- orders #" + strconv.Itoa(order.Step) + " -------------------")
-	log.Info(" OrderID  : ", order.ClientOrderID)
+	log.Info("-----------------------------------------------")
+	log.Info(" OrderID  : ", order.ID)
 	log.Info(" Symbol   : ", order.Symbol.String())
 	log.Info(" Side     : ", order.Side)
 	log.Info(" Type     : ", order.OrderType)
 	log.Info(" Price    : ", order.Price)
-	log.Info(" Quantity : ", order.Qty)
+	log.Info(" Quantity : ", order.Quantity)
 	log.Info(" Step     : ", order.Symbol.StepSize)
-
-	if order.SourceDepth != nil {
-		log.Info(" Time     : ", time.Now().Sub(order.SourceDepth.Time), " Ago")
-	}
-
 	log.Info("-----------------------------------------------")
 }
 
@@ -138,4 +132,11 @@ func LogOrders(orders []models.Order) {
 	for _, order := range orders {
 		LogOrder(order)
 	}
+}
+
+func Delete(s []*models.Depth, i int) []*models.Depth {
+	if i >= len(s) {
+		return s
+	}
+	return append(s[:i], s[i+1:]...)
 }

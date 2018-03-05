@@ -17,7 +17,7 @@ func NewDepthCache() *DepthCache {
 	d := &DepthCache{
 		cache:      map[string]*models.Depth{},
 		lock:       new(sync.Mutex),
-		expireTime: 2 * time.Second,
+		expireTime: 1 * time.Minute,
 	}
 	return d
 }
@@ -38,39 +38,13 @@ func (c *DepthCache) Get(symbol models.Symbol) *models.Depth {
 	return nil
 }
 
-func (c *DepthCache) GetAllDepthes() []*models.Depth {
+func (c *DepthCache) GetAll() []*models.Depth {
 	defer c.lock.Unlock()
 	c.lock.Lock()
 	depthList := []*models.Depth{}
 	for _, v := range c.cache {
 		if time.Now().Sub(v.Time) < c.expireTime {
 			depthList = append(depthList, v)
-		}
-	}
-	return depthList
-}
-
-func (c *DepthCache) GetRelevantDepthes(depth *models.Depth) []*models.Depth {
-	defer c.lock.Unlock()
-	c.lock.Lock()
-	depthList := []*models.Depth{}
-	for _, v := range c.cache {
-		if v.BaseAsset.Equal(depth.Symbol.BaseAsset) {
-			if time.Now().Sub(v.Time) < c.expireTime {
-				depthList = append(depthList, v)
-			}
-		}
-	}
-	for _, d := range depthList {
-		for _, v := range c.cache {
-			if (v.BaseAsset.Equal(depth.Symbol.QuoteAsset) &&
-				v.QuoteAsset.Equal(d.QuoteAsset)) ||
-				(v.QuoteAsset.Equal(depth.Symbol.QuoteAsset) &&
-					v.BaseAsset.Equal(d.QuoteAsset)) {
-				if time.Now().Sub(v.Time) < c.expireTime {
-					depthList = append(depthList, v)
-				}
-			}
 		}
 	}
 	return depthList

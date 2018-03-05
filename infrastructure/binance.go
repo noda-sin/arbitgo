@@ -2,7 +2,6 @@ package infrastructure
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"strconv"
 	"sync"
@@ -127,21 +126,8 @@ func NewBinance(apikey string, secret string) Binance {
 	return ex
 }
 
-func (bi Binance) GetCharge() float64 {
+func (bi Binance) GetFee() float64 {
 	return 0.001
-}
-
-func (bi Binance) GetBalance(asset models.Asset) (*models.Balance, error) {
-	balances, err := bi.GetBalances()
-	if err != nil {
-		return nil, err
-	}
-	for _, b := range balances {
-		if string(b.Asset) == string(asset) {
-			return b, nil
-		}
-	}
-	return nil, fmt.Errorf("Not found balance for %s", string(asset))
 }
 
 func (bi Binance) GetBalances() ([]*models.Balance, error) {
@@ -412,9 +398,9 @@ func (bi Binance) SendOrder(order *models.Order) error {
 			Type:             binance.TypeLimit,
 			TimeInForce:      binance.GTC,
 			Side:             side,
-			Quantity:         order.Qty,
+			Quantity:         order.Quantity,
 			Price:            order.Price,
-			NewClientOrderID: order.ClientOrderID,
+			NewClientOrderID: order.ID,
 			Timestamp:        time.Now(),
 		}
 	} else {
@@ -422,8 +408,8 @@ func (bi Binance) SendOrder(order *models.Order) error {
 			Symbol:           order.Symbol.String(),
 			Type:             binance.TypeMarket,
 			Side:             side,
-			Quantity:         order.Qty,
-			NewClientOrderID: order.ClientOrderID,
+			Quantity:         order.Quantity,
+			NewClientOrderID: order.ID,
 			Timestamp:        time.Now(),
 		}
 	}
@@ -461,17 +447,17 @@ func (bi Binance) ConfirmOrder(order *models.Order) (float64, error) {
 		return 0, err
 	}
 	for _, o := range openOrders {
-		if o.ClientOrderID == order.ClientOrderID {
+		if o.ClientOrderID == order.ID {
 			return o.ExecutedQty, nil
 		}
 	}
-	return order.Qty, nil
+	return order.Quantity, nil
 }
 
 func (bi Binance) CancelOrder(order *models.Order) error {
 	cor := binance.CancelOrderRequest{
 		Symbol:            order.Symbol.String(),
-		OrigClientOrderID: order.ClientOrderID,
+		OrigClientOrderID: order.ID,
 		RecvWindow:        10 * time.Second,
 		Timestamp:         time.Now(),
 	}

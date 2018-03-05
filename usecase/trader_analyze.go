@@ -1,52 +1,150 @@
 package usecase
 
 import (
-	"fmt"
-
 	models "github.com/OopsMouse/arbitgo/models"
+	"github.com/OopsMouse/arbitgo/util"
+	log "github.com/sirupsen/logrus"
 )
 
-func (arbit *Trader) Analyze(depthList []*models.Depth) {
-	balance := arbit.GetBalance(arbit.MainAsset)
-	tradeOrder := arbit.MarketAnalyzer.ArbitrageOrders(
-		depthList,
-		balance.Free,
-	)
+func (trader *Trader) runAnalyzer() {
+	for {
+		depthes := trader.relationalDepthes(trader.newDepth().Symbol)
+		balance := trader.GetBalance(trader.MainAsset).Free
+		seq := trader.bestOfSequence(trader.MainAsset, trader.MainAsset, depthes, balance)
 
-	if tradeOrder == nil {
-		return
+		if seq == nil {
+			continue
+		}
+
+		*trader.tradeChan <- seq
 	}
-
-	tradeOrder, err := arbit.ValidateOrders(tradeOrder, balance.Free)
-	if err != nil {
-		return
-	}
-
-	go arbit.StartTreding(tradeOrder)
 }
 
-func (arbit *Trader) ValidateOrders(tradeOrder *models.TradeOrder, currBalance float64) (*models.TradeOrder, error) {
-	depthes := []*models.Depth{}
+func (trader *Trader) bestOfSequence(from models.Asset, to models.Asset, depthes []*models.Depth, targetQuantity float64) *models.Sequence {
+	seqes := newSequences(from, to, depthes)
 
-	for _, order := range tradeOrder.Orders {
-		depth := arbit.Cache.Get(order.Symbol)
-		if depth != nil {
-			depthes = append(depthes, depth)
+	if len(seqes) == 0 {
+		return nil
+	}
+
+	maxScore := 0.0
+	var seqOfMaxScore *models.Sequence
+	for _, seq := range seqes {
+		score := trader.scoreOfSequence(seq, targetQuantity)
+		if score > 0.0001 && score > maxScore {
+			maxScore = score
+			seqOfMaxScore = seq
 		}
 	}
 
-	if len(tradeOrder.Orders) != len(depthes) {
-		return nil, fmt.Errorf("Failed to get new depthes")
+	return seqOfMaxScore
+}
+
+func newSequences(from models.Asset, to models.Asset, depthes []*models.Depth) []*models.Sequence {
+	sequences := []*models.Sequence{}
+	for i, depth := range depthes {
+		if depth.QuoteAsset.Equal(from) && depth.BaseAsset.Equal(to) {
+			sequences = append(sequences, &models.Sequence{
+				Symbol:   depth.Symbol,
+				Side:     models.SideBuy,
+				From:     from,
+				To:       to,
+				Price:    depth.AskPrice,
+				Quantity: depth.AskQty,
+				Src:      depth,
+			})
+		} else if depth.QuoteAsset.Equal(to) && depth.BaseAsset.Equal(from) {
+			sequences = append(sequences, &models.Sequence{
+				Symbol:   depth.Symbol,
+				Side:     models.SideSell,
+				From:     from,
+				To:       to,
+				Price:    depth.BidPrice,
+				Quantity: depth.BidQty,
+				Src:      depth,
+			})
+		} else if depth.QuoteAsset.Equal(from) {
+			for _, next := range newSequences(depth.BaseAsset, to, util.Delete(depthes, i)) {
+				if depth.Symbol.Equal(next.Symbol) {
+					continue
+				}
+				sequences = append(sequences, &models.Sequence{
+					Symbol:   depth.Symbol,
+					Side:     models.SideBuy,
+					From:     from,
+					To:       to,
+					Price:    depth.AskPrice,
+					Quantity: depth.AskQty,
+					Src:      depth,
+					Next:     next,
+				})
+			}
+		} else if depth.QuoteAsset.Equal(to) {
+			seq := &models.Sequence{
+				Symbol:   depth.Symbol,
+				Side:     models.SideSell,
+				From:     from,
+				To:       to,
+				Price:    depth.BidPrice,
+				Quantity: depth.BidQty,
+				Src:      depth,
+			}
+			for _, previous := range newSequences(from, depth.BaseAsset, util.Delete(depthes, i)) {
+				if depth.Symbol.Equal(previous.Symbol) {
+					continue
+				}
+				p := previous
+				for {
+					if p.Next != nil {
+						p = p.Next
+						continue
+					}
+					p.Next = seq
+					break
+				}
+				sequences = append(sequences, previous)
+			}
+		}
 	}
 
-	// ok := arbit.MarketAnalyzer.ValidateOrders(tradeOrder.Orders, depthes)
-	// if ok == true {
-	// 	return tradeOrder, nil
-	// }
+	return sequences
+}
 
-	newTradeOrder, ok := arbit.MarketAnalyzer.ReplaceOrders(tradeOrder, depthes, currBalance)
-	if ok == false {
-		return nil, fmt.Errorf("Arbit orders destroyed")
+func (trader *Trader) scoreOfSequence(sequence *models.Sequence, targetQuantity float64) float64 {
+	from := sequence.From
+	balance := trader.GetBalance(from).Free
+	fee := trader.Exchange.GetFee()
+
+	s := sequence
+	currentQuantity := balance
+	currentAsset := from
+
+	log.Debug("--------------------------------------------")
+	log.Debugf("%s:%f", currentAsset, currentQuantity)
+	for {
+		s.Target = targetQuantity
+
+		currentQuantity *= (1 - fee)
+
+		if s.Side == models.SideBuy {
+			log.Debugf(" %s, BUY, %f -> ", s.Symbol, s.Price)
+			currentAsset = s.Symbol.BaseAsset
+			currentQuantity = util.Floor(currentQuantity/s.Price, s.Symbol.StepSize)
+		} else {
+			log.Debugf(" %s, SELL, %f -> ", s.Symbol, s.Price)
+			currentAsset = s.Symbol.QuoteAsset
+			currentQuantity = util.Floor(currentQuantity, s.Symbol.StepSize) * s.Price
+		}
+		log.Debugf("%s:%f", currentAsset, currentQuantity)
+
+		if s.Next == nil {
+			break
+		}
+
+		s = s.Next
 	}
-	return newTradeOrder, nil
+	log.Debugf("Rate : %f", (currentQuantity-targetQuantity)/targetQuantity)
+	log.Debug("--------------------------------------------")
+
+	return (currentQuantity - targetQuantity) / targetQuantity
 }

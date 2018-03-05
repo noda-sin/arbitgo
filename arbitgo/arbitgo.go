@@ -7,6 +7,7 @@ import (
 
 	"github.com/OopsMouse/arbitgo/infrastructure"
 	"github.com/OopsMouse/arbitgo/usecase"
+	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 )
 
@@ -16,6 +17,7 @@ func main() {
 	app.Usage = "A Bot for arbit rage with one exchange, multi currency"
 	app.Version = "0.0.1"
 
+	var debug bool
 	var dryrun bool
 	var apiKey string
 	var secret string
@@ -23,6 +25,11 @@ func main() {
 	var server string
 
 	app.Flags = []cli.Flag{
+		cli.BoolFlag{
+			Name:        "debug",
+			Usage:       "debug mode",
+			Destination: &debug,
+		},
 		cli.BoolFlag{
 			Name:        "dryrun, dry, d",
 			Usage:       "dry run mode",
@@ -62,6 +69,7 @@ func main() {
 
 	app.Run(os.Args)
 
+	logInit(debug)
 	mainAsset := models.Asset(assetString)
 	exchange := newExchange(apiKey, secret, mainAsset, dryrun)
 	arbitrader := newTrader(exchange, mainAsset, &server)
@@ -96,4 +104,15 @@ func newTrader(exchange usecase.Exchange, mainAsset models.Asset, server *string
 		mainAsset,
 		server,
 	)
+}
+
+func logInit(debug bool) {
+	format := &log.TextFormatter{
+		FullTimestamp:   true,
+		TimestampFormat: "2006-01-02 15:04:05",
+	}
+	log.SetFormatter(format)
+	if debug {
+		log.SetLevel(log.DebugLevel)
+	}
 }

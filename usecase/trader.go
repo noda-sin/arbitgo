@@ -1,13 +1,12 @@
 package usecase
 
 import (
-	"encoding/json"
-	"net/url"
-	"sync"
+	"os"
+	"os/signal"
+	"syscall"
 
 	models "github.com/OopsMouse/arbitgo/models"
 	"github.com/OopsMouse/arbitgo/util"
-	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -19,44 +18,26 @@ const (
 )
 
 type Trader struct {
-	Exchange
-	MarketAnalyzer
+	Exchange   Exchange
 	MainAsset  models.Asset
-	Status     TradeStatus
-	StatusLock *sync.Mutex
-	Cache      *util.DepthCache
-	Balances   []*models.Balance
-	ServerHost *string
+	cache      *util.DepthCache
+	balances   []*models.Balance
+	serverHost *string
+	tradeChan  *chan *models.Sequence
+	depthChan  *chan *models.Depth
 }
 
 func NewTrader(ex Exchange, mainAsset models.Asset, serverHost *string) *Trader {
-	analyzer := MarketAnalyzer{
-		MainAsset: mainAsset,
-		Charge:    ex.GetCharge(),
-	}
-
 	return &Trader{
-		Exchange:       ex,
-		MarketAnalyzer: analyzer,
-		MainAsset:      mainAsset,
-		Status:         TradeWaiting,
-		StatusLock:     new(sync.Mutex),
-		Cache:          util.NewDepthCache(),
-		Balances:       []*models.Balance{},
-		ServerHost:     serverHost,
+		Exchange:   ex,
+		MainAsset:  mainAsset,
+		cache:      util.NewDepthCache(),
+		balances:   []*models.Balance{},
+		serverHost: serverHost,
 	}
-}
-
-func logInit() {
-	format := &log.TextFormatter{
-		FullTimestamp:   true,
-		TimestampFormat: "2006-01-02 15:04:05",
-	}
-	log.SetFormatter(format)
 }
 
 func (trader *Trader) Run() {
-	logInit()
 	log.Info("Starting Trader ....")
 
 	trader.LoadBalances()
@@ -64,52 +45,20 @@ func (trader *Trader) Run() {
 	log.Info("----------------- params -----------------")
 	log.Info(" Main asset         : ", trader.MainAsset)
 	log.Info(" Main asset balance : ", trader.GetBalance(trader.MainAsset).Free)
-	log.Info(" Exchange charge    : ", trader.MarketAnalyzer.Charge)
+	log.Info(" Exchange fee       : ", trader.Exchange.GetFee())
 	log.Info("------------------------------------------")
 
-	var dch chan *models.Depth
-	if trader.ServerHost == nil || *trader.ServerHost == "" {
-		dch = trader.Exchange.GetDepthOnUpdate()
-	} else {
-		dch = depthChannel(trader.ServerHost)
-	}
+	go trader.runTrader()
+	go trader.runAnalyzer()
 
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt, os.Kill, syscall.SIGTERM)
 	for {
-		depth := <-dch
-		trader.Cache.Set(depth)
-		go trader.Analyze(trader.Cache.GetRelevantDepthes(depth))
-	}
-}
-
-func depthChannel(host *string) chan *models.Depth {
-	dch := make(chan *models.Depth)
-	u := url.URL{Scheme: "ws", Host: *host, Path: "/ws"}
-	log.Printf("connecting to %s", u.String())
-
-	go func() {
-		defer close(dch)
-		for {
-			c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-			if err != nil {
-				return
-			}
-			go func() {
-				defer c.Close()
-				for {
-					_, bytes, err := c.ReadMessage()
-					if err != nil {
-						return
-					}
-					var depth *models.Depth
-					err = json.Unmarshal(bytes, &depth)
-					if err != nil {
-						continue
-					}
-					dch <- depth
-				}
-			}()
+		select {
+		case kill := <-interrupt:
+			log.Info("Got signal : ", kill)
+			log.Info("Stopping trader")
+			return
 		}
-	}()
-
-	return dch
+	}
 }

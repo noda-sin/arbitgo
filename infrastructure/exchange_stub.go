@@ -7,15 +7,22 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type executingOrder struct {
+	uncommit float64
+	order    *models.Order
+}
+
 type ExchangeStub struct {
 	Exchange
-	Balances map[models.Asset]*models.Balance
+	Balances        map[models.Asset]*models.Balance
+	ExecutingOrders map[string]*executingOrder
 }
 
 func NewExchangeStub(ex Exchange, initialBalances map[models.Asset]*models.Balance) ExchangeStub {
 	return ExchangeStub{
-		Exchange: ex,
-		Balances: initialBalances,
+		Exchange:        ex,
+		Balances:        initialBalances,
+		ExecutingOrders: map[string]*executingOrder{},
 	}
 }
 
@@ -72,53 +79,66 @@ func (ex ExchangeStub) GetSymbols() []models.Symbol {
 }
 
 func (ex ExchangeStub) SendOrder(order *models.Order) error {
+	ex.ExecutingOrders[order.ID] = &executingOrder{
+		uncommit: order.Quantity,
+		order:    order,
+	}
 	return nil
 }
 
 func (ex ExchangeStub) ConfirmOrder(order *models.Order) (float64, error) {
+	executingOrder := ex.ExecutingOrders[order.ID]
+
 	depth, err := ex.Exchange.GetDepth(order.Symbol)
 	if err != nil {
 		return 0, err
 	}
 
 	if order.OrderType == models.TypeMarket {
-		err := ex.CommitOrder(order, depth, order.Qty)
+		err := ex.CommitOrder(order, depth, order.Quantity)
 		if err != nil {
 			return 0, err
 		}
-		return order.Qty, nil
+		return order.Quantity, nil
 	}
 
 	var commitQty = 0.0
 	if order.Side == models.SideBuy {
-		log.Info("Symbol : ", order.Symbol.String(), " Price : ", depth.AskPrice, " Quantity : ", depth.AskQty)
+		log.Debugf("Symbol : %s, Price : %f, Quantity : %f", order.Symbol, depth.AskPrice, depth.AskQty)
 		if order.Price >= depth.AskPrice {
-			if order.Qty <= depth.AskQty {
-				commitQty = order.Qty
+			if executingOrder.uncommit <= depth.AskQty {
+				commitQty = executingOrder.uncommit
 			} else {
-				commitQty = order.Qty - depth.AskQty
+				commitQty = executingOrder.uncommit - depth.AskQty
 			}
 		} else {
 			commitQty = 0
 		}
 	} else {
-		log.Info("Symbol : ", order.Symbol.String(), " Price : ", depth.BidPrice, " Quantity : ", depth.BidQty)
+		log.Debugf("Symbol : %s, Price : %f, Quantity : %f", order.Symbol, depth.BidPrice, depth.BidQty)
 		if order.Price <= depth.BidPrice {
-			if order.Qty <= depth.BidQty {
-				commitQty = order.Qty
+			if executingOrder.uncommit <= depth.BidQty {
+				commitQty = executingOrder.uncommit
 			} else {
-				commitQty = order.Qty - depth.BidQty
+				commitQty = executingOrder.uncommit - depth.BidQty
 			}
 		} else {
 			commitQty = 0
 		}
 	}
 
+	executingOrder.uncommit -= commitQty
+
 	err = ex.CommitOrder(order, depth, commitQty)
 	if err != nil {
 		return 0, err
 	}
-	return commitQty, nil
+
+	if executingOrder.uncommit <= 0 {
+		delete(ex.ExecutingOrders, order.ID)
+	}
+
+	return executingOrder.order.Quantity - executingOrder.uncommit, nil
 }
 
 func (ex ExchangeStub) CommitOrder(order *models.Order, depth *models.Depth, qty float64) error {
@@ -130,8 +150,8 @@ func (ex ExchangeStub) CommitOrder(order *models.Order, depth *models.Depth, qty
 		}
 		var price float64
 		if order.OrderType == models.TypeLimit {
-			if balance.Free < order.Qty*order.Price {
-				return fmt.Errorf("Insufficent balance: %s, %f < %f\n", balance.Asset, balance.Free, order.Qty*order.Price)
+			if balance.Free < qty*order.Price {
+				return fmt.Errorf("Insufficent balance: %s, %f < %f", balance.Asset, balance.Free, qty*order.Price)
 			}
 			price = order.Price
 		} else {
@@ -147,8 +167,8 @@ func (ex ExchangeStub) CommitOrder(order *models.Order, depth *models.Depth, qty
 		}
 		var price float64
 		if order.OrderType == models.TypeLimit {
-			if balance.Free < order.Qty {
-				return fmt.Errorf("Insufficent balance: %s, %f < %f\n", balance.Asset, balance.Free, order.Qty)
+			if balance.Free < qty {
+				return fmt.Errorf("Insufficent balance: %s, %f < %f", balance.Asset, balance.Free, qty)
 			}
 			price = order.Price
 		} else {
@@ -162,5 +182,7 @@ func (ex ExchangeStub) CommitOrder(order *models.Order, depth *models.Depth, qty
 }
 
 func (ex ExchangeStub) CancelOrder(order *models.Order) error {
+	delete(ex.ExecutingOrders, order.ID)
+
 	return nil
 }

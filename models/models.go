@@ -43,6 +43,10 @@ type Symbol struct {
 	Volume         float64 `json:"volume"`
 }
 
+func (s Symbol) Equal(k Symbol) bool {
+	return s.String() == k.String()
+}
+
 func (s Symbol) String() string {
 	return s.Text
 }
@@ -61,20 +65,25 @@ func (symbs Symbols) Swap(i, j int) {
 	symbs[i], symbs[j] = symbs[j], symbs[i]
 }
 
-type TradeOrder struct {
-	Score  float64
-	Orders []Order
+type Sequence struct {
+	Symbol   Symbol
+	Side     OrderSide
+	From     Asset
+	To       Asset
+	Price    float64
+	Quantity float64
+	Target   float64
+	Src      *Depth
+	Next     *Sequence
 }
 
 type Order struct {
-	Step          int
-	Symbol        Symbol
-	OrderType     OrderType
-	Price         float64
-	Side          OrderSide
-	Qty           float64
-	ClientOrderID string
-	SourceDepth   *Depth
+	ID        string
+	Symbol    Symbol
+	OrderType OrderType
+	Price     float64
+	Side      OrderSide
+	Quantity  float64
 }
 
 type Depth struct {
@@ -86,10 +95,6 @@ type Depth struct {
 	BidQty     float64   `json:"bid_qty"`
 	AskQty     float64   `json:"ask_qty"`
 	Time       time.Time `json:"time"`
-}
-
-type RotationDepth struct {
-	DepthList []*Depth
 }
 
 type Balance struct {

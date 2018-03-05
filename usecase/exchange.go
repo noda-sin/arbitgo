@@ -5,8 +5,7 @@ import (
 )
 
 type Exchange interface {
-	GetCharge() float64
-	GetBalance(asset models.Asset) (*models.Balance, error)
+	GetFee() float64
 	GetBalances() ([]*models.Balance, error)
 	GetSymbols() []models.Symbol
 	GetDepth(symbol models.Symbol) (*models.Depth, error)

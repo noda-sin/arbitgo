@@ -5,16 +5,16 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (arbit *Trader) LoadBalances() {
-	balances, err := arbit.Exchange.GetBalances()
+func (trader *Trader) LoadBalances() {
+	balances, err := trader.Exchange.GetBalances()
 	if err != nil {
 		return
 	}
-	arbit.Balances = balances
+	trader.balances = balances
 }
 
-func (arbit *Trader) GetBalance(asset models.Asset) *models.Balance {
-	for _, balance := range arbit.Balances {
+func (trader *Trader) GetBalance(asset models.Asset) *models.Balance {
+	for _, balance := range trader.balances {
 		if string(balance.Asset) == string(asset) {
 			return balance
 		}
@@ -22,12 +22,24 @@ func (arbit *Trader) GetBalance(asset models.Asset) *models.Balance {
 	return nil
 }
 
-func (arbit *Trader) LogBalances() {
+func (trader *Trader) PrintBalances() {
+	trader.LoadBalances()
+
 	log.Info("----------------- Balances -----------------")
 
-	for _, balance := range arbit.Balances {
+	for _, balance := range trader.balances {
 		log.Info(balance.Asset, " : ", balance.Total)
 	}
+
+	log.Info("--------------------------------------------")
+}
+
+func (trader *Trader) PrintBalance(asset models.Asset) {
+	trader.LoadBalances()
+
+	log.Info("----------------- Balances -----------------")
+
+	log.Info(asset, " : ", trader.GetBalance(asset).Total)
 
 	log.Info("--------------------------------------------")
 }
