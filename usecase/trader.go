@@ -12,7 +12,6 @@ import (
 
 type Trader struct {
 	Exchange   Exchange
-	MainAsset  string
 	cache      *util.DepthCache
 	balances   []*models.Balance
 	serverHost *string
@@ -21,10 +20,9 @@ type Trader struct {
 	depch      *chan *models.Depth
 }
 
-func NewTrader(ex Exchange, mainAsset string, serverHost *string) *Trader {
+func NewTrader(ex Exchange, serverHost *string) *Trader {
 	return &Trader{
 		Exchange:   ex,
-		MainAsset:  mainAsset,
 		cache:      util.NewDepthCache(),
 		balances:   []*models.Balance{},
 		positions:  util.NewSet(),

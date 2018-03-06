@@ -32,7 +32,7 @@ func (trader *Trader) getDepthes(asset string) []*models.Depth {
 		return all
 	}
 	for _, i := range all {
-		if util.Include(quotes, i.BaseAsset) || i.BaseAsset == asset {
+		if util.Include(quotes, i.BaseAsset) || asset == i.BaseAsset {
 			ret = append(ret, i)
 		}
 	}

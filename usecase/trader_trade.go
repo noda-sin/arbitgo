@@ -68,14 +68,13 @@ func (trader *Trader) confirmOrder(order models.Order) ConfirmStatus {
 			trader.LoadBalances()
 		}
 
+		log.Infof("[%s] Executed : %f", order.ID, executed)
+
 		if executed == order.Quantity { // 全部OK
-			log.Info("Executed : ", executed)
 			return ALLOK
 		} else if executed > 0 { // 部分的にOK
-			log.Info("Executed : ", executed)
 			return PARTOK
 		} else { // 全部だめ
-			log.Info("Executed : ", executed)
 			continue
 		}
 

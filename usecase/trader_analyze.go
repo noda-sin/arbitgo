@@ -57,6 +57,7 @@ func (trader *Trader) bestOfSequence(from string, to string, depthes []*models.D
 func newSequences(from string, to string, depthes []*models.Depth) []*models.Sequence {
 	sequences := []*models.Sequence{}
 	for i, depth := range depthes {
+
 		if depth.QuoteAsset == from && depth.BaseAsset == to {
 			sequences = append(sequences, &models.Sequence{
 				Symbol:   depth.Symbol,
@@ -77,14 +78,23 @@ func newSequences(from string, to string, depthes []*models.Depth) []*models.Seq
 				Quantity: depth.BidQty,
 				Src:      depth,
 			})
-		} else if depth.QuoteAsset == from {
-			for _, next := range newSequences(depth.BaseAsset, to, util.Delete(depthes, i)) {
+		} else if depth.QuoteAsset == from || depth.BaseAsset == from {
+			var nextFrom string
+			var side models.OrderSide
+			if depth.QuoteAsset == from {
+				nextFrom = depth.BaseAsset
+				side = models.SideBuy
+			} else {
+				nextFrom = depth.QuoteAsset
+				side = models.SideSell
+			}
+			for _, next := range newSequences(nextFrom, to, util.Delete(depthes, i)) {
 				if depth.Symbol.Equal(next.Symbol) {
 					continue
 				}
 				sequences = append(sequences, &models.Sequence{
 					Symbol:   depth.Symbol,
-					Side:     models.SideBuy,
+					Side:     side,
 					From:     from,
 					To:       to,
 					Price:    depth.AskPrice,
@@ -93,26 +103,38 @@ func newSequences(from string, to string, depthes []*models.Depth) []*models.Seq
 					Next:     next,
 				})
 			}
-		} else if depth.QuoteAsset == to {
+		} else if depth.QuoteAsset == to || depth.BaseAsset == to {
+			var prevTo string
+			var side models.OrderSide
+			if depth.QuoteAsset == to {
+				prevTo = depth.QuoteAsset
+				side = models.SideSell
+			} else {
+				prevTo = depth.BaseAsset
+				side = models.SideBuy
+			}
+
 			seq := &models.Sequence{
 				Symbol:   depth.Symbol,
-				Side:     models.SideSell,
+				Side:     side,
 				From:     from,
 				To:       to,
 				Price:    depth.BidPrice,
 				Quantity: depth.BidQty,
 				Src:      depth,
 			}
-			for _, previous := range newSequences(from, depth.BaseAsset, util.Delete(depthes, i)) {
-				if depth.Symbol.Equal(previous.Symbol) {
-					continue
-				}
+			for _, previous := range newSequences(from, prevTo, util.Delete(depthes, i)) {
 				p := previous
 				for {
 					if p.Next != nil {
 						p = p.Next
 						continue
 					}
+
+					if depth.Symbol.Equal(p.Symbol) {
+						break
+					}
+
 					p.Next = seq
 					seq.From = p.To
 					break

@@ -21,7 +21,6 @@ func main() {
 	var dryrun bool
 	var apiKey string
 	var secret string
-	var assetString string
 	var server string
 
 	app.Flags = []cli.Flag{
@@ -48,12 +47,6 @@ func main() {
 			EnvVar:      "EXCHANGE_SECRET",
 		},
 		cli.StringFlag{
-			Name:        "asset, as",
-			Usage:       "main asset",
-			Destination: &assetString,
-			Value:       "BTC",
-		},
-		cli.StringFlag{
 			Name:        "server",
 			Usage:       "server host",
 			Destination: &server,
@@ -70,13 +63,12 @@ func main() {
 	app.Run(os.Args)
 
 	logInit(debug)
-	mainAsset := string(assetString)
-	exchange := newExchange(apiKey, secret, mainAsset, dryrun)
-	arbitrader := newTrader(exchange, mainAsset, &server)
+	exchange := newExchange(apiKey, secret, dryrun)
+	arbitrader := newTrader(exchange, &server)
 	arbitrader.Run()
 }
 
-func newExchange(apikey string, secret string, mainAsset string, dryRun bool) usecase.Exchange {
+func newExchange(apikey string, secret string, dryRun bool) usecase.Exchange {
 	binance := infrastructure.NewBinance(
 		apikey,
 		secret,
@@ -84,10 +76,10 @@ func newExchange(apikey string, secret string, mainAsset string, dryRun bool) us
 
 	if dryRun {
 		balances := map[string]*models.Balance{}
-		balances[mainAsset] = &models.Balance{
-			Asset: mainAsset,
-			Free:  0.12,
-			Total: 0.12,
+		balances["BTC"] = &models.Balance{
+			Asset: "BTC",
+			Free:  0.01,
+			Total: 0.01,
 		}
 		return infrastructure.NewExchangeStub(
 			binance,
@@ -98,10 +90,9 @@ func newExchange(apikey string, secret string, mainAsset string, dryRun bool) us
 	return binance
 }
 
-func newTrader(exchange usecase.Exchange, mainAsset string, server *string) *usecase.Trader {
+func newTrader(exchange usecase.Exchange, server *string) *usecase.Trader {
 	return usecase.NewTrader(
 		exchange,
-		mainAsset,
 		server,
 	)
 }

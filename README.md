@@ -22,9 +22,6 @@ GLOBAL OPTIONS:
    --dryrun, -d                 dry run mode
    --apikey value, -a value     api key of exchange [$EXCHANGE_APIKEY]
    --secret value, -s value     secret of exchange [$EXCHANGE_SECRET]
-   --asset value, --as value    main asset (default: "BTC")
-   --maxqty value, -m value     max qty of main asset (default: 0)
-   --threshold value, -t value  profit threshold (default: 0)
    --help, -h                   show help
    --version, -v                print the version
 ```
