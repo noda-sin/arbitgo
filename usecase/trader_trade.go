@@ -10,38 +10,34 @@ import (
 )
 
 func (trader *Trader) runTrader() {
-	tradeChan := make(chan *models.Sequence)
-	trader.tradeChan = &tradeChan
+	seqch := make(chan *models.Sequence)
+	trader.seqch = &seqch
 
-	trading := false
 	for {
-		seq := <-*trader.tradeChan
-		if trading {
+		seq := <-*trader.seqch
+		if trader.isRunningPosition(seq.From) {
 			continue
 		}
-		trading = true
 		go func() {
-			defer func() {
-				trading = false
-			}()
-
 			log.Info("Start trade")
-			trader.PrintBalance(trader.MainAsset)
-
+			defer func() {
+				log.Info("End trade")
+			}()
 			<-trader.doSequence(seq)
-
-			trader.PrintBalance(trader.MainAsset)
-			log.Info("End trade")
 		}()
 	}
 }
 
 func (trader *Trader) sendOrder(order models.Order) {
 	log.Info("START - send order")
+	log.Info("OrderID : ", order.ID)
+	defer func() {
+		log.Info("END - send order")
+	}()
+
 	util.LogOrder(order)
 
 	err := trader.Exchange.SendOrder(&order)
-	log.Info("END - send order")
 
 	if err != nil {
 		panic(err)
@@ -57,19 +53,26 @@ const (
 )
 
 func (trader *Trader) confirmOrder(order models.Order) ConfirmStatus {
+	log.Info("START - confirm order")
+	log.Info("OrderID : ", order.ID)
+	defer func() {
+		log.Info("END - confirm order")
+	}()
 	for i := 0; i < 12; i++ {
 		executed, err := trader.Exchange.ConfirmOrder(&order)
 		if err != nil {
 			panic(err)
 		}
 
+		if executed > 0 {
+			trader.LoadBalances()
+		}
+
 		if executed == order.Quantity { // 全部OK
 			log.Info("Executed : ", executed)
-			trader.LoadBalances()
 			return ALLOK
 		} else if executed > 0 { // 部分的にOK
 			log.Info("Executed : ", executed)
-			trader.LoadBalances()
 			return PARTOK
 		} else { // 全部だめ
 			log.Info("Executed : ", executed)
@@ -81,7 +84,25 @@ func (trader *Trader) confirmOrder(order models.Order) ConfirmStatus {
 	return ALLNG
 }
 
+func checkQuanitiySize(order models.Order) bool {
+	if order.Symbol.MaxQty < order.Quantity || order.Symbol.MinQty > order.Quantity {
+		return false
+	}
+
+	if order.Quantity*order.Price < order.Symbol.MinNotional {
+		return false
+	}
+
+	return true
+}
+
 func (trader *Trader) cancelOrder(order models.Order) {
+	log.Info("START - cancel order")
+	log.Info("OrderID : ", order.ID)
+	defer func() {
+		log.Info("END - cancel order")
+	}()
+
 	err := trader.Exchange.CancelOrder(&order)
 	if err != nil {
 		panic(err)
@@ -94,19 +115,32 @@ func (trader *Trader) doSequence(seq *models.Sequence) chan struct{} {
 	go func() {
 		defer close(done)
 
+		trader.PrintSequence(seq)
+		trader.addPosition(seq.From)
+
 		child := []chan struct{}{}
 		order := trader.newOrder(seq)
+
+		if !checkQuanitiySize(order) {
+			return
+		}
+
 		trader.sendOrder(order)
 		status := trader.confirmOrder(order)
 
+		log.Info("Order Result : ", status)
+
 		switch status {
 		case ALLNG:
-			trader.cancelOrder(order)
-			child = append(child, trader.doRecovery(seq))
-			return
 		case PARTOK:
 			trader.cancelOrder(order)
-			child = append(child, trader.doRecovery(seq))
+		}
+
+		trader.delPosition(seq.From)
+
+		switch status {
+		case ALLNG:
+			return
 		}
 
 		if seq.Next == nil {
@@ -125,32 +159,9 @@ func (trader *Trader) doSequence(seq *models.Sequence) chan struct{} {
 	return done
 }
 
-func (trader *Trader) doRecovery(seq *models.Sequence) chan struct{} {
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-
-		// リカバリする必要なし
-		if seq.From == trader.MainAsset {
-			return
-		}
-
-		for {
-			// MainAssetまでのシーケンスを探索
-			newSeq := trader.bestOfSequence(seq.From, trader.MainAsset, trader.relationalDepthes(seq.Symbol), seq.Target)
-			if newSeq != nil {
-				<-trader.doSequence(newSeq)
-				return
-			}
-			time.Sleep(5 * time.Second)
-		}
-	}()
-
-	return done
-}
-
 func (trader *Trader) newOrder(seq *models.Sequence) models.Order {
+	trader.LoadBalances()
+	trader.PrintBalanceOfBigAssets()
 	balance := trader.GetBalance(seq.From).Free
 	var quantity float64
 	if seq.Side == models.SideBuy {
@@ -166,6 +177,7 @@ func (trader *Trader) newOrder(seq *models.Sequence) models.Order {
 		Price:     seq.Price,
 		Side:      seq.Side,
 		Quantity:  quantity,
+		Sequence:  seq,
 	}
 	return order
 }

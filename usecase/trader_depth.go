@@ -5,48 +5,35 @@ import (
 	"net/url"
 
 	"github.com/OopsMouse/arbitgo/models"
+	"github.com/OopsMouse/arbitgo/util"
 	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
 )
 
-func (trader *Trader) initDepthChan() {
+func (trader *Trader) depthSubscriber() {
 	var depthChan chan *models.Depth
 	if trader.serverHost == nil || *trader.serverHost == "" {
 		depthChan = trader.Exchange.GetDepthOnUpdate()
 	} else {
 		depthChan = depthServerChannel(trader.serverHost)
 	}
-	trader.depthChan = &depthChan
-}
 
-func (trader *Trader) newDepth() *models.Depth {
-	if trader.depthChan == nil {
-		trader.initDepthChan()
+	for {
+		depth := <-depthChan
+		trader.cache.Set(depth)
 	}
-	depth := <-*trader.depthChan
-	trader.cache.Set(depth)
-	return depth
 }
 
-func (trade *Trader) relationalDepthes(symbol models.Symbol) []*models.Depth {
-	base := symbol.BaseAsset
-	quote := symbol.QuoteAsset
-	all := trade.cache.GetAll()
+func (trader *Trader) getDepthes(asset string) []*models.Depth {
+	quotes := trader.Exchange.GetQuotes()
+	all := trader.cache.GetAll()
 	ret := []*models.Depth{}
-
-	for _, i := range all { // BaseAssetが同じDepthのみ取得
-		if base.Equal(i.BaseAsset) {
-			ret = append(ret, i)
-		}
+	if util.Include(quotes, asset) {
+		return all
 	}
-	for _, a := range ret {
-		for _, b := range all {
-			if (b.BaseAsset.Equal(quote) &&
-				b.QuoteAsset.Equal(a.QuoteAsset)) ||
-				(b.QuoteAsset.Equal(quote) &&
-					b.BaseAsset.Equal(a.QuoteAsset)) {
-				ret = append(ret, b)
-			}
+	for _, i := range all {
+		if util.Include(quotes, i.BaseAsset) || i.BaseAsset == asset {
+			ret = append(ret, i)
 		}
 	}
 	return ret

@@ -70,20 +70,20 @@ func main() {
 	app.Run(os.Args)
 
 	logInit(debug)
-	mainAsset := models.Asset(assetString)
+	mainAsset := string(assetString)
 	exchange := newExchange(apiKey, secret, mainAsset, dryrun)
 	arbitrader := newTrader(exchange, mainAsset, &server)
 	arbitrader.Run()
 }
 
-func newExchange(apikey string, secret string, mainAsset models.Asset, dryRun bool) usecase.Exchange {
+func newExchange(apikey string, secret string, mainAsset string, dryRun bool) usecase.Exchange {
 	binance := infrastructure.NewBinance(
 		apikey,
 		secret,
 	)
 
 	if dryRun {
-		balances := map[models.Asset]*models.Balance{}
+		balances := map[string]*models.Balance{}
 		balances[mainAsset] = &models.Balance{
 			Asset: mainAsset,
 			Free:  0.12,
@@ -98,7 +98,7 @@ func newExchange(apikey string, secret string, mainAsset models.Asset, dryRun bo
 	return binance
 }
 
-func newTrader(exchange usecase.Exchange, mainAsset models.Asset, server *string) *usecase.Trader {
+func newTrader(exchange usecase.Exchange, mainAsset string, server *string) *usecase.Trader {
 	return usecase.NewTrader(
 		exchange,
 		mainAsset,

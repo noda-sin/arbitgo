@@ -7,6 +7,7 @@ import (
 type Exchange interface {
 	GetFee() float64
 	GetBalances() ([]*models.Balance, error)
+	GetQuotes() []string
 	GetSymbols() []models.Symbol
 	GetDepth(symbol models.Symbol) (*models.Depth, error)
 	GetDepthOnUpdate() chan *models.Depth

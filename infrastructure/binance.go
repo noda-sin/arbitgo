@@ -63,9 +63,9 @@ func NewBinance(apikey string, secret string) Binance {
 		quoteAssetSet.Append(s.QuoteAsset)
 		symbol := models.Symbol{
 			Text:           s.Symbol,
-			BaseAsset:      models.Asset(s.BaseAsset),
+			BaseAsset:      s.BaseAsset,
 			BasePrecision:  s.BaseAssetPrecision,
-			QuoteAsset:     models.Asset(s.QuoteAsset),
+			QuoteAsset:     s.QuoteAsset,
 			QuotePrecision: s.QuotePrecision,
 		}
 		for _, f := range s.Filters {
@@ -147,13 +147,17 @@ func (bi Binance) GetBalances() ([]*models.Balance, error) {
 	balances := []*models.Balance{}
 	for _, b := range account.Balances {
 		balance := &models.Balance{
-			Asset: models.Asset(b.Asset),
+			Asset: b.Asset,
 			Free:  b.Free,
 			Total: b.Free + b.Locked,
 		}
 		balances = append(balances, balance)
 	}
 	return balances, nil
+}
+
+func (bi Binance) GetQuotes() []string {
+	return bi.QuoteAssetSet.ToSlice()
 }
 
 func (bi Binance) GetSymbols() []models.Symbol {
@@ -204,7 +208,7 @@ func getDepthInOrderBook(symbol models.Symbol, orderBook *binance.OrderBook) (*m
 	}
 	return &models.Depth{
 		Symbol:     symbol,
-		BaseAsset:  models.Asset(baseAsset),
+		BaseAsset:  baseAsset,
 		QuoteAsset: quoteAsset,
 		BidPrice:   bidPrice,
 		AskPrice:   askPrice,
@@ -348,8 +352,8 @@ func (bi Binance) getDepthOnUpdateRequest(symbols []models.Symbol) (chan *models
 func (bi Binance) getQuoteToQuotePairSymbols(symbols []models.Symbol) []models.Symbol {
 	ret := []models.Symbol{}
 	for _, s := range symbols {
-		if bi.QuoteAssetSet.Include(string(s.BaseAsset)) &&
-			bi.QuoteAssetSet.Include(string(s.QuoteAsset)) {
+		if bi.QuoteAssetSet.Include(s.BaseAsset) &&
+			bi.QuoteAssetSet.Include(s.QuoteAsset) {
 			ret = append(ret, s)
 		}
 	}
@@ -359,7 +363,7 @@ func (bi Binance) getQuoteToQuotePairSymbols(symbols []models.Symbol) []models.S
 func (bi Binance) getQuoteToBasePairSymbols(symbols []models.Symbol) []models.Symbol {
 	ret := []models.Symbol{}
 	for _, s := range symbols {
-		if !bi.QuoteAssetSet.Include(string(s.BaseAsset)) {
+		if !bi.QuoteAssetSet.Include(s.BaseAsset) {
 			ret = append(ret, s)
 		}
 	}

@@ -14,11 +14,11 @@ type executingOrder struct {
 
 type ExchangeStub struct {
 	Exchange
-	Balances        map[models.Asset]*models.Balance
+	Balances        map[string]*models.Balance
 	ExecutingOrders map[string]*executingOrder
 }
 
-func NewExchangeStub(ex Exchange, initialBalances map[models.Asset]*models.Balance) ExchangeStub {
+func NewExchangeStub(ex Exchange, initialBalances map[string]*models.Balance) ExchangeStub {
 	return ExchangeStub{
 		Exchange:        ex,
 		Balances:        initialBalances,
@@ -26,7 +26,7 @@ func NewExchangeStub(ex Exchange, initialBalances map[models.Asset]*models.Balan
 	}
 }
 
-func (ex ExchangeStub) NewBalance(asset models.Asset) {
+func (ex ExchangeStub) NewBalance(asset string) {
 	balance := ex.Balances[asset]
 	if balance == nil {
 		ex.Balances[asset] = &models.Balance{
@@ -37,7 +37,7 @@ func (ex ExchangeStub) NewBalance(asset models.Asset) {
 	}
 }
 
-func (ex ExchangeStub) AddBalance(asset models.Asset, qty float64) {
+func (ex ExchangeStub) AddBalance(asset string, qty float64) {
 	ex.NewBalance(asset)
 	balance := ex.Balances[asset]
 	ex.Balances[asset] = &models.Balance{
@@ -47,7 +47,7 @@ func (ex ExchangeStub) AddBalance(asset models.Asset, qty float64) {
 	}
 }
 
-func (ex ExchangeStub) SubBalance(asset models.Asset, qty float64) {
+func (ex ExchangeStub) SubBalance(asset string, qty float64) {
 	ex.NewBalance(asset)
 	balance := ex.Balances[asset]
 	ex.Balances[asset] = &models.Balance{
@@ -65,13 +65,13 @@ func (ex ExchangeStub) GetBalances() ([]*models.Balance, error) {
 	return bs, nil
 }
 
-func (ex ExchangeStub) GetBalance(asset models.Asset) (*models.Balance, error) {
+func (ex ExchangeStub) GetBalance(asset string) (*models.Balance, error) {
 	for k, b := range ex.Balances {
-		if string(k) == string(asset) {
+		if k == asset {
 			return b, nil
 		}
 	}
-	return nil, fmt.Errorf("Not found balance for %s", string(asset))
+	return nil, fmt.Errorf("Not found balance for %s", asset)
 }
 
 func (ex ExchangeStub) GetSymbols() []models.Symbol {

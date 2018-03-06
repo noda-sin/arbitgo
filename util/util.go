@@ -4,6 +4,7 @@ import (
 	"math"
 	"path"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/OopsMouse/arbitgo/models"
@@ -61,15 +62,29 @@ func Map(vs []string, f func(string) string) []string {
 }
 
 type Set struct {
+	lock *sync.Mutex
 	buff map[string]struct{}
 }
 
 func NewSet() *Set {
-	return &Set{buff: map[string]struct{}{}}
+	return &Set{
+		lock: new(sync.Mutex),
+		buff: map[string]struct{}{},
+	}
 }
 
 func (s *Set) Append(i string) {
+	defer s.lock.Unlock()
+	s.lock.Lock()
 	s.buff[i] = struct{}{}
+}
+
+func (s *Set) Remove(i string) {
+	defer s.lock.Unlock()
+	s.lock.Lock()
+	if s.Include(i) {
+		delete(s.buff, i)
+	}
 }
 
 func (s *Set) Include(i string) bool {

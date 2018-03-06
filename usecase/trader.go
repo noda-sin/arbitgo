@@ -10,29 +10,24 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type TradeStatus string
-
-const (
-	TradeWaiting = TradeStatus("Waiting")
-	TradeRunning = TradeStatus("Running")
-)
-
 type Trader struct {
 	Exchange   Exchange
-	MainAsset  models.Asset
+	MainAsset  string
 	cache      *util.DepthCache
 	balances   []*models.Balance
 	serverHost *string
-	tradeChan  *chan *models.Sequence
-	depthChan  *chan *models.Depth
+	positions  *util.Set
+	seqch      *chan *models.Sequence
+	depch      *chan *models.Depth
 }
 
-func NewTrader(ex Exchange, mainAsset models.Asset, serverHost *string) *Trader {
+func NewTrader(ex Exchange, mainAsset string, serverHost *string) *Trader {
 	return &Trader{
 		Exchange:   ex,
 		MainAsset:  mainAsset,
 		cache:      util.NewDepthCache(),
 		balances:   []*models.Balance{},
+		positions:  util.NewSet(),
 		serverHost: serverHost,
 	}
 }
@@ -40,14 +35,9 @@ func NewTrader(ex Exchange, mainAsset models.Asset, serverHost *string) *Trader 
 func (trader *Trader) Run() {
 	log.Info("Starting Trader ....")
 
-	trader.LoadBalances()
+	trader.PrintBalanceOfBigAssets()
 
-	log.Info("----------------- params -----------------")
-	log.Info(" Main asset         : ", trader.MainAsset)
-	log.Info(" Main asset balance : ", trader.GetBalance(trader.MainAsset).Free)
-	log.Info(" Exchange fee       : ", trader.Exchange.GetFee())
-	log.Info("------------------------------------------")
-
+	go trader.depthSubscriber()
 	go trader.runTrader()
 	go trader.runAnalyzer()
 

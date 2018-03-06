@@ -8,19 +8,33 @@ import (
 
 func (trader *Trader) runAnalyzer() {
 	for {
-		depthes := trader.relationalDepthes(trader.newDepth().Symbol)
-		balance := trader.GetBalance(trader.MainAsset).Free
-		seq := trader.bestOfSequence(trader.MainAsset, trader.MainAsset, depthes, balance)
+		bigAssets := trader.BigAssets()
 
-		if seq == nil {
-			continue
+		assets := []string{}
+		for _, a := range bigAssets {
+			if !trader.isRunningPosition(a) {
+				assets = append(assets, a)
+			}
 		}
 
-		*trader.tradeChan <- seq
+		for _, a := range assets {
+			depthes := trader.getDepthes(a)
+			balance := trader.GetBalance(a).Free
+
+			func(asset string, depthes []*models.Depth, balance float64) {
+				seq := trader.bestOfSequence(asset, asset, depthes, balance)
+
+				if seq == nil {
+					return
+				}
+
+				*trader.seqch <- seq
+			}(a, depthes, balance)
+		}
 	}
 }
 
-func (trader *Trader) bestOfSequence(from models.Asset, to models.Asset, depthes []*models.Depth, targetQuantity float64) *models.Sequence {
+func (trader *Trader) bestOfSequence(from string, to string, depthes []*models.Depth, targetQuantity float64) *models.Sequence {
 	seqes := newSequences(from, to, depthes)
 
 	if len(seqes) == 0 {
@@ -40,10 +54,10 @@ func (trader *Trader) bestOfSequence(from models.Asset, to models.Asset, depthes
 	return seqOfMaxScore
 }
 
-func newSequences(from models.Asset, to models.Asset, depthes []*models.Depth) []*models.Sequence {
+func newSequences(from string, to string, depthes []*models.Depth) []*models.Sequence {
 	sequences := []*models.Sequence{}
 	for i, depth := range depthes {
-		if depth.QuoteAsset.Equal(from) && depth.BaseAsset.Equal(to) {
+		if depth.QuoteAsset == from && depth.BaseAsset == to {
 			sequences = append(sequences, &models.Sequence{
 				Symbol:   depth.Symbol,
 				Side:     models.SideBuy,
@@ -53,7 +67,7 @@ func newSequences(from models.Asset, to models.Asset, depthes []*models.Depth) [
 				Quantity: depth.AskQty,
 				Src:      depth,
 			})
-		} else if depth.QuoteAsset.Equal(to) && depth.BaseAsset.Equal(from) {
+		} else if depth.QuoteAsset == to && depth.BaseAsset == from {
 			sequences = append(sequences, &models.Sequence{
 				Symbol:   depth.Symbol,
 				Side:     models.SideSell,
@@ -63,7 +77,7 @@ func newSequences(from models.Asset, to models.Asset, depthes []*models.Depth) [
 				Quantity: depth.BidQty,
 				Src:      depth,
 			})
-		} else if depth.QuoteAsset.Equal(from) {
+		} else if depth.QuoteAsset == from {
 			for _, next := range newSequences(depth.BaseAsset, to, util.Delete(depthes, i)) {
 				if depth.Symbol.Equal(next.Symbol) {
 					continue
@@ -79,7 +93,7 @@ func newSequences(from models.Asset, to models.Asset, depthes []*models.Depth) [
 					Next:     next,
 				})
 			}
-		} else if depth.QuoteAsset.Equal(to) {
+		} else if depth.QuoteAsset == to {
 			seq := &models.Sequence{
 				Symbol:   depth.Symbol,
 				Side:     models.SideSell,
@@ -100,6 +114,7 @@ func newSequences(from models.Asset, to models.Asset, depthes []*models.Depth) [
 						continue
 					}
 					p.Next = seq
+					seq.From = p.To
 					break
 				}
 				sequences = append(sequences, previous)
@@ -147,4 +162,20 @@ func (trader *Trader) scoreOfSequence(sequence *models.Sequence, targetQuantity 
 	log.Debug("--------------------------------------------")
 
 	return (currentQuantity - targetQuantity) / targetQuantity
+}
+
+func (trader *Trader) PrintSequence(seq *models.Sequence) {
+	seqString := ""
+	s := seq
+	for {
+		seqString += s.From
+		if s.Next != nil {
+			s = s.Next
+			seqString += " -> "
+			continue
+		}
+		seqString += " -> " + s.To
+		break
+	}
+	log.Infof("Sequence : %s", seqString)
 }

@@ -4,22 +4,11 @@ import (
 	"time"
 )
 
-type Asset string
-
-func (a Asset) Equal(b Asset) bool {
-	return string(a) == string(b)
-}
-
 type OrderSide string
 
 type OrderType string
 
 const (
-	AssetBTC  = Asset("BTC")
-	AssetUSDT = Asset("USDT")
-	AssetETH  = Asset("ETH")
-	AssetBNB  = Asset("BNB")
-
 	SideBuy  = OrderSide("BUY")
 	SideSell = OrderSide("Sell")
 
@@ -29,9 +18,9 @@ const (
 
 type Symbol struct {
 	Text           string  `json:"text"`
-	BaseAsset      Asset   `json:"base_asset"`
+	BaseAsset      string  `json:"base_asset"`
 	BasePrecision  int     `json:"base_precision"`
-	QuoteAsset     Asset   `json:"quote_asset"`
+	QuoteAsset     string  `json:"quote_asset"`
 	QuotePrecision int     `json:"quote_precision"`
 	MaxPrice       float64 `json:"max_price"`
 	MinPrice       float64 `json:"min_price"`
@@ -68,8 +57,8 @@ func (symbs Symbols) Swap(i, j int) {
 type Sequence struct {
 	Symbol   Symbol
 	Side     OrderSide
-	From     Asset
-	To       Asset
+	From     string
+	To       string
 	Price    float64
 	Quantity float64
 	Target   float64
@@ -84,11 +73,12 @@ type Order struct {
 	Price     float64
 	Side      OrderSide
 	Quantity  float64
+	Sequence  *Sequence
 }
 
 type Depth struct {
-	BaseAsset  Asset     `json:"base_asset"`
-	QuoteAsset Asset     `json:"quote_asset"`
+	BaseAsset  string    `json:"base_asset"`
+	QuoteAsset string    `json:"quote_asset"`
 	Symbol     Symbol    `json:"symbol"`
 	BidPrice   float64   `json:"bid_price"`
 	AskPrice   float64   `json:"ask_price"`
@@ -98,7 +88,7 @@ type Depth struct {
 }
 
 type Balance struct {
-	Asset Asset
+	Asset string
 	Free  float64
 	Total float64
 }
