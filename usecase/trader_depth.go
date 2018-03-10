@@ -10,7 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (trader *Trader) depthSubscriber() {
+func (trader *Trader) depthSubscriber() chan *models.Depth {
 	var depthChan chan *models.Depth
 	if trader.serverHost == nil || *trader.serverHost == "" {
 		depthChan = trader.Exchange.GetDepthOnUpdate()
@@ -18,21 +18,27 @@ func (trader *Trader) depthSubscriber() {
 		depthChan = depthServerChannel(trader.serverHost)
 	}
 
-	for {
-		depth := <-depthChan
-		trader.cache.Set(depth)
-	}
+	depch := make(chan *models.Depth)
+
+	go func() {
+		for {
+			depth := <-depthChan
+			trader.cache.Set(depth)
+			depch <- depth
+		}
+	}()
+
+	return depch
 }
 
-func (trader *Trader) getDepthes(asset string) []*models.Depth {
+func (trader *Trader) getDepthes(asset string, renewAsset string) []*models.Depth {
 	quotes := trader.Exchange.GetQuotes()
 	all := trader.cache.GetAll()
 	ret := []*models.Depth{}
-	if util.Include(quotes, asset) {
-		return all
-	}
 	for _, i := range all {
-		if util.Include(quotes, i.BaseAsset) || asset == i.BaseAsset {
+		if util.Include(quotes, i.BaseAsset) ||
+			asset == i.BaseAsset ||
+			renewAsset == i.BaseAsset {
 			ret = append(ret, i)
 		}
 	}

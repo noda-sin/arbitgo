@@ -106,4 +106,5 @@ func logInit(debug bool) {
 	if debug {
 		log.SetLevel(log.DebugLevel)
 	}
+	log.SetOutput(os.Stdout)
 }

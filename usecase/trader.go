@@ -16,8 +16,6 @@ type Trader struct {
 	balances   []*models.Balance
 	serverHost *string
 	positions  *util.Set
-	seqch      *chan *models.Sequence
-	depch      *chan *models.Depth
 }
 
 func NewTrader(ex Exchange, serverHost *string) *Trader {
@@ -30,14 +28,19 @@ func NewTrader(ex Exchange, serverHost *string) *Trader {
 	}
 }
 
+const Worker = 1
+
 func (trader *Trader) Run() {
 	log.Info("Starting Trader ....")
 
 	trader.PrintBalanceOfBigAssets()
 
-	go trader.depthSubscriber()
-	go trader.runTrader()
-	go trader.runAnalyzer()
+	depch := trader.depthSubscriber()
+	seqch := trader.runTrader()
+
+	for i := 0; i < Worker; i++ {
+		go trader.runAnalyzer(depch, seqch)
+	}
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt, os.Kill, syscall.SIGTERM)

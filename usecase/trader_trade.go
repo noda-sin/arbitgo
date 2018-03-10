@@ -9,23 +9,26 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (trader *Trader) runTrader() {
+func (trader *Trader) runTrader() chan *models.Sequence {
 	seqch := make(chan *models.Sequence)
-	trader.seqch = &seqch
 
-	for {
-		seq := <-*trader.seqch
-		if trader.isRunningPosition(seq.From) {
-			continue
-		}
-		go func() {
-			log.Info("Start trade")
-			defer func() {
-				log.Info("End trade")
+	go func() {
+		for {
+			seq := <-seqch
+			if trader.isRunningPosition(seq.From) {
+				continue
+			}
+			go func() {
+				log.Info("Start trade")
+				defer func() {
+					log.Info("End trade")
+				}()
+				<-trader.doSequence(seq)
 			}()
-			<-trader.doSequence(seq)
-		}()
-	}
+		}
+	}()
+
+	return seqch
 }
 
 func (trader *Trader) sendOrder(order models.Order) {

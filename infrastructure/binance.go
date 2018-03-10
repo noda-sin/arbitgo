@@ -20,7 +20,6 @@ type Binance struct {
 	QuoteAssetSet *util.Set
 	Symbols       []models.Symbol
 	DepthCache    cmap.ConcurrentMap
-	OrderRetry    int
 	UseWebsocket  bool
 }
 
@@ -120,7 +119,6 @@ func NewBinance(apikey string, secret string) Binance {
 		QuoteAssetSet: quoteAssetSet,
 		Symbols:       symbols,
 		DepthCache:    cmap.New(),
-		OrderRetry:    10,
 		UseWebsocket:  true,
 	}
 	return ex

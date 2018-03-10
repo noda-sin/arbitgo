@@ -150,8 +150,8 @@ func LogOrders(orders []models.Order) {
 }
 
 func Delete(s []*models.Depth, i int) []*models.Depth {
-	if i >= len(s) {
-		return s
-	}
-	return append(s[:i], s[i+1:]...)
+	ret := []*models.Depth{}
+	ret = append(ret, s[:i]...)
+	ret = append(ret, s[i+1:]...)
+	return ret
 }

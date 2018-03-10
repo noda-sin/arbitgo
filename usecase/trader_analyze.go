@@ -6,9 +6,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (trader *Trader) runAnalyzer() {
+func (trader *Trader) runAnalyzer(depch chan *models.Depth, seqch chan *models.Sequence) {
 	for {
+		depth := <-depch
 		bigAssets := trader.BigAssets()
+		renewAsset := depth.BaseAsset
 
 		assets := []string{}
 		for _, a := range bigAssets {
@@ -18,7 +20,7 @@ func (trader *Trader) runAnalyzer() {
 		}
 
 		for _, a := range assets {
-			depthes := trader.getDepthes(a)
+			depthes := trader.getDepthes(a, renewAsset)
 			balance := trader.GetBalance(a).Free
 
 			func(asset string, depthes []*models.Depth, balance float64) {
@@ -28,14 +30,24 @@ func (trader *Trader) runAnalyzer() {
 					return
 				}
 
-				*trader.seqch <- seq
+				seqch <- seq
 			}(a, depthes, balance)
 		}
 	}
 }
 
 func (trader *Trader) bestOfSequence(from string, to string, depthes []*models.Depth, targetQuantity float64) *models.Sequence {
-	seqes := newSequences(from, to, depthes)
+
+	symbols := []string{}
+	for _, s := range depthes {
+		symbols = append(symbols, s.Symbol.String())
+	}
+
+	log.Debug("Symboles : ", symbols)
+
+	seqes := unifySequences(newSequences(from, to, depthes))
+
+	log.Debug("Sequences Count : ", len(seqes))
 
 	if len(seqes) == 0 {
 		return nil
@@ -54,8 +66,19 @@ func (trader *Trader) bestOfSequence(from string, to string, depthes []*models.D
 	return seqOfMaxScore
 }
 
+const MAX_SEQUENCE_SIZE = 4
+
 func newSequences(from string, to string, depthes []*models.Depth) []*models.Sequence {
+	return _newSequences(from, to, depthes, 1)
+}
+
+func _newSequences(from string, to string, depthes []*models.Depth, seqDepth int) []*models.Sequence {
 	sequences := []*models.Sequence{}
+
+	if seqDepth > MAX_SEQUENCE_SIZE {
+		return sequences
+	}
+
 	for i, depth := range depthes {
 
 		if depth.QuoteAsset == from && depth.BaseAsset == to {
@@ -78,73 +101,66 @@ func newSequences(from string, to string, depthes []*models.Depth) []*models.Seq
 				Quantity: depth.BidQty,
 				Src:      depth,
 			})
-		} else if depth.QuoteAsset == from || depth.BaseAsset == from {
-			var nextFrom string
-			var side models.OrderSide
-			if depth.QuoteAsset == from {
-				nextFrom = depth.BaseAsset
-				side = models.SideBuy
-			} else {
-				nextFrom = depth.QuoteAsset
-				side = models.SideSell
-			}
-			for _, next := range newSequences(nextFrom, to, util.Delete(depthes, i)) {
-				if depth.Symbol.Equal(next.Symbol) {
-					continue
+		} else {
+			if depth.QuoteAsset == from || depth.BaseAsset == from {
+				var nextFrom string
+				var side models.OrderSide
+				var price float64
+				var quantity float64
+				if depth.QuoteAsset == from {
+					nextFrom = depth.BaseAsset
+					side = models.SideBuy
+					price = depth.AskPrice
+					quantity = depth.AskQty
+				} else {
+					nextFrom = depth.QuoteAsset
+					side = models.SideSell
+					price = depth.BidPrice
+					quantity = depth.BidQty
 				}
-				sequences = append(sequences, &models.Sequence{
-					Symbol:   depth.Symbol,
-					Side:     side,
-					From:     from,
-					To:       to,
-					Price:    depth.AskPrice,
-					Quantity: depth.AskQty,
-					Src:      depth,
-					Next:     next,
-				})
-			}
-		} else if depth.QuoteAsset == to || depth.BaseAsset == to {
-			var prevTo string
-			var side models.OrderSide
-			if depth.QuoteAsset == to {
-				prevTo = depth.QuoteAsset
-				side = models.SideSell
-			} else {
-				prevTo = depth.BaseAsset
-				side = models.SideBuy
-			}
-
-			seq := &models.Sequence{
-				Symbol:   depth.Symbol,
-				Side:     side,
-				From:     from,
-				To:       to,
-				Price:    depth.BidPrice,
-				Quantity: depth.BidQty,
-				Src:      depth,
-			}
-			for _, previous := range newSequences(from, prevTo, util.Delete(depthes, i)) {
-				p := previous
-				for {
-					if p.Next != nil {
-						p = p.Next
+				for _, next := range _newSequences(nextFrom, to, util.Delete(depthes, i), seqDepth+1) {
+					if depth.Symbol.Equal(next.Symbol) {
 						continue
 					}
-
-					if depth.Symbol.Equal(p.Symbol) {
-						break
-					}
-
-					p.Next = seq
-					seq.From = p.To
-					break
+					sequences = append(sequences, &models.Sequence{
+						Symbol:   depth.Symbol,
+						Side:     side,
+						From:     from,
+						To:       to,
+						Price:    price,
+						Quantity: quantity,
+						Src:      depth,
+						Next:     next,
+					})
 				}
-				sequences = append(sequences, previous)
 			}
 		}
 	}
 
 	return sequences
+}
+
+func unifySequences(seqes []*models.Sequence) []*models.Sequence {
+	unifySeqes := []*models.Sequence{}
+	seqStrings := []string{}
+	for _, seq := range seqes {
+		s := seq
+		seqString := ""
+		for {
+			seqString += s.Symbol.String()
+			if s.Next != nil {
+				s = s.Next
+				continue
+			}
+			break
+		}
+		if util.Include(seqStrings, seqString) {
+			continue
+		}
+		seqStrings = append(seqStrings, seqString)
+		unifySeqes = append(unifySeqes, seq)
+	}
+	return unifySeqes
 }
 
 func (trader *Trader) scoreOfSequence(sequence *models.Sequence, targetQuantity float64) float64 {

@@ -2,8 +2,10 @@ package infrastructure
 
 import (
 	"fmt"
+	"sync"
 
 	models "github.com/OopsMouse/arbitgo/models"
+	"github.com/OopsMouse/arbitgo/util"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -16,6 +18,7 @@ type ExchangeStub struct {
 	Exchange
 	Balances        map[string]*models.Balance
 	ExecutingOrders map[string]*executingOrder
+	lock            *sync.Mutex
 }
 
 func NewExchangeStub(ex Exchange, initialBalances map[string]*models.Balance) ExchangeStub {
@@ -23,6 +26,7 @@ func NewExchangeStub(ex Exchange, initialBalances map[string]*models.Balance) Ex
 		Exchange:        ex,
 		Balances:        initialBalances,
 		ExecutingOrders: map[string]*executingOrder{},
+		lock:            new(sync.Mutex),
 	}
 }
 
@@ -38,6 +42,8 @@ func (ex ExchangeStub) NewBalance(asset string) {
 }
 
 func (ex ExchangeStub) AddBalance(asset string, qty float64) {
+	defer ex.lock.Unlock()
+	ex.lock.Lock()
 	ex.NewBalance(asset)
 	balance := ex.Balances[asset]
 	ex.Balances[asset] = &models.Balance{
@@ -48,6 +54,8 @@ func (ex ExchangeStub) AddBalance(asset string, qty float64) {
 }
 
 func (ex ExchangeStub) SubBalance(asset string, qty float64) {
+	defer ex.lock.Unlock()
+	ex.lock.Lock()
 	ex.NewBalance(asset)
 	balance := ex.Balances[asset]
 	ex.Balances[asset] = &models.Balance{
@@ -150,7 +158,7 @@ func (ex ExchangeStub) CommitOrder(order *models.Order, depth *models.Depth, qty
 		}
 		var price float64
 		if order.OrderType == models.TypeLimit {
-			if balance.Free < qty*order.Price {
+			if balance.Free < util.Floor(qty, order.Symbol.StepSize)*order.Price {
 				return fmt.Errorf("Insufficent balance: %s, %f < %f", balance.Asset, balance.Free, qty*order.Price)
 			}
 			price = order.Price
@@ -167,7 +175,7 @@ func (ex ExchangeStub) CommitOrder(order *models.Order, depth *models.Depth, qty
 		}
 		var price float64
 		if order.OrderType == models.TypeLimit {
-			if balance.Free < qty {
+			if balance.Free < util.Floor(qty, order.Symbol.StepSize) {
 				return fmt.Errorf("Insufficent balance: %s, %f < %f", balance.Asset, balance.Free, qty)
 			}
 			price = order.Price
